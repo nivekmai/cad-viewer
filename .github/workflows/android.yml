@@ -1,0 +1,125 @@
+name: Android builds and releases
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test, and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+      - name: Check release automation
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+      - name: Check app version
+        id: version
+        run: python3 tools/release.py plan
+      - name: Build and validate Android app
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:lintDebug :app:lintRelease
+      - name: Verify offline CAD and SCAD engines
+        run: |
+          npm ci --prefix tools
+          npx --prefix tools playwright install --with-deps chromium
+          node tools/test-cad-browser.cjs
+          node tools/test-scad-browser.cjs
+          mkdir -p build/model-probe
+          javac -d build/model-probe app/src/main/java/com/nivek/stlviewer/{Geometry,CadText,StlParser,ObjParser,ThreeMfParser,DxfParser,ModelParser}.java tools/ModelProbe.java
+          java -cp build/model-probe:app/src/main/resources com.nivek.stlviewer.ModelProbe build/cad-test/*.dxf build/cad-test/*.stl
+      - name: Save builds
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-builds
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+      - name: Save test and lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validation-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+            app/build/test-artifacts/
+
+  release:
+    name: Prepare draft release
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.release == 'true' && vars.RELEASE_SIGNING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: prepare-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - name: Install signing tools
+        run: sdkmanager 'build-tools;37.0.0'
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: android-builds
+          path: downloaded
+      - name: Sign release APK with the existing app certificate
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo '::error::Configure the four ANDROID signing secrets documented in RELEASING.md before creating signed releases.'
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/cad-viewer.keystore"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$key"
+          test -s "$key"
+          mkdir -p dist
+          sdk_tools="$ANDROID_HOME/build-tools/37.0.0"
+          "$sdk_tools/zipalign" -P 16 -f 4 downloaded/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$sdk_tools/apksigner" sign --ks "$key" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "dist/CAD-Viewer-$VERSION.apk" "$RUNNER_TEMP/aligned.apk"
+          "$sdk_tools/apksigner" verify --print-certs "dist/CAD-Viewer-$VERSION.apk" | tee "$RUNNER_TEMP/signing.txt"
+          grep -q 'fa12d700d8e3238f7a0ea13e3dedf19546aa1b8d56f9fbc4b8355fa907579e2a' "$RUNNER_TEMP/signing.txt"
+          "$sdk_tools/zipalign" -c -P 16 4 "dist/CAD-Viewer-$VERSION.apk"
+      - name: Generate changelog and draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 tools/release.py publish

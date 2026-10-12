@@ -1,0 +1,10 @@
+app/src/main/assets/cad/libredwg-web.* -text linguist-vendored
+app/src/main/assets/cad/occt-import-js.* -text linguist-vendored
+app/src/main/assets/scad/openscad* -text linguist-vendored
+third_party/** -text linguist-vendored
+tools/fixtures/** -text linguist-vendored
+app/src/test/resources/** -text
+*.wasm binary
+*.bin binary
+*.dwg binary
+*.tar.gz binary
