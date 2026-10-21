@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Migrated the Android UI, OpenGL renderer, CAD bridge, and all model/text parsers from Java to Kotlin.
+- Preserved file formats, gestures, drawing annotations, and update compatibility.
+- Version bumps now automatically prepare release APKs, source archives, checksums, and draft release notes after Android and CAD-engine tests pass.
+- When GitHub signing is not enabled, the workflow explicitly labels the APK as unsigned; signing with the existing certificate is required before installation.
+
 ## 1.3.1
 
 - First GitHub release of CAD Viewer, with automated Android builds, parser and CAD-engine tests, and lint checks.

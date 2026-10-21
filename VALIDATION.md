@@ -1,4 +1,12 @@
-# CAD Viewer 1.3 validation
+# CAD Viewer 1.4.0 validation
+
+- All ten production Android classes migrated from Java to Kotlin using AGP's built-in Kotlin support; no production `.java` files remain. Existing Java tests and desktop-only utilities remain as compatibility checks.
+- 63 original parser tests plus the Kotlin CAD integration test pass, covering all nine converted browser fixtures. Nine release-automation tests pass.
+- Compared complete vertex/normal/line buffers against the pre-migration Java implementation: all nine public CAD fixtures and the private user-provided DWG are byte-for-byte identical.
+- Debug and release APKs build; debug/release lint pass. Package ID is unchanged, versionCode 7/versionName 1.4.0. Native Android touch/picker/WebView smoke testing remains necessary.
+- CI checks that production source remains Kotlin, builds both APK variants, runs browser engine tests and Kotlin integration validation, and prepares a versioned draft release. Unsigned APKs are explicitly named and documented when signing is not enabled.
+
+## Previous CAD Viewer 1.3 validation
 
 - Renamed launcher/activity title to CAD Viewer; verified packaged label, versionCode 5/versionName 1.3, unchanged application ID and signing certificate.
 - Added bundled vector text for TEXT/MTEXT/visible ATTRIB/constant ATTDEF; saved DIMENSION pictures include arrows, extension lines, text, and measurement overrides. LEADER polylines render; omitted styling remains reported.

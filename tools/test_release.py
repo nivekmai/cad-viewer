@@ -7,6 +7,21 @@ from release import app_version, check_version, changelog_entry
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_unsigned_apks_are_explicitly_named(self):
+        self.assertEqual('CAD-Viewer-1.4.0.apk', release.apk_name('1.4.0'))
+        self.assertEqual('CAD-Viewer-1.4.0-unsigned.apk', release.apk_name('1.4.0', True))
+
+    def test_unsigned_notes_do_not_claim_installability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'CHANGELOG.md').write_text('## 1.4.0\n\n- Kotlin migration.\n')
+            with patch.object(release, 'ROOT', root), patch.object(release, 'run', return_value=''):
+                info = {'version': '1.4.0', 'sha': 'abc', 'tag': 'v1.4.0'}
+                unsigned = release.notes(info, unsigned=True)
+                self.assertIn('cannot be installed until signed', unsigned)
+                self.assertNotIn('install it over', unsigned)
+                self.assertIn('install it over', release.notes(info))
+
     def test_reads_version(self):
         self.assertEqual(('0.10.2', 12), app_version("versionName '0.10.2'\nversionCode 12"))
 
