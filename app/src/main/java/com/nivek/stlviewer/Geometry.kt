@@ -13,8 +13,7 @@ class Geometry {
         var size = 0
         fun add(value: Double) {
             if (!value.isFinite() || abs(value) > Float.MAX_VALUE) throw IOException("Invalid coordinate in model.")
-            if (size >= StlParser.MAX_TRIANGLES * 9) throw IOException("This model exceeds the geometry limit (500,000 triangles/segments).")
-            if (size == values.size) values = values.copyOf(minOf(StlParser.MAX_TRIANGLES * 9, size * 2))
+            if (size == values.size) values = values.copyOf(grownCapacity(size, size.toLong() + 1))
             values[size++] = value.toFloat()
         }
         fun point(p: DoubleArray) { p.forEach(::add) }
@@ -38,8 +37,6 @@ class Geometry {
     fun line(a: DoubleArray, b: DoubleArray) { check(); point(lines, a); point(lines, b) }
     fun check() {
         if (Thread.currentThread().isInterrupted) throw InterruptedIOException()
-        if (triangles.size / 9 + lines.size / 6 >= StlParser.MAX_TRIANGLES)
-            throw IOException("This model exceeds the geometry limit (500,000 triangles/segments).")
     }
     fun mesh() = StlParser.Mesh(triangles.values, triangles.size, lines.values, lines.size).also {
         if (skipped.isNotEmpty()) it.notice = "Not displayed: ${skipped.joinToString(", ")}."
@@ -87,6 +84,12 @@ class Geometry {
         triangle(p[0], p[1], p[2])
     }
     companion object {
+        // Respect JVM indexing capacity without a policy limit on model complexity.
+        fun grownCapacity(current: Int, required: Long): Int {
+            if (required > Int.MAX_VALUE) throw IOException("Geometry exceeds the runtime array capacity.")
+            return maxOf(required, minOf(Int.MAX_VALUE.toLong(), current.toLong()*2)).toInt()
+        }
+
         @JvmStatic fun number(value: String): Double = value.toDoubleOrNull()?.takeIf { it.isFinite() }
             ?: throw IOException("Invalid number in model: ${value.take(40)}")
         @JvmStatic fun integer(value: String): Int = value.toIntOrNull() ?: throw IOException("Invalid index in model.")

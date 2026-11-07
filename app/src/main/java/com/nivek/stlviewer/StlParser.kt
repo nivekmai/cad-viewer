@@ -6,7 +6,6 @@ import kotlin.math.sqrt
 
 /** Binary STL is detected by its length rather than the ambiguous "solid" prefix. */
 object StlParser {
-    const val MAX_TRIANGLES = 500_000
 
     class Mesh @JvmOverloads @Throws(IOException::class) constructor(
         points: FloatArray, count: Int, edges: FloatArray = FloatArray(0), edgeCount: Int = 0
@@ -21,7 +20,9 @@ object StlParser {
         @JvmField val depth: Double
         @JvmField val height: Double
         init {
-            if (count + edgeCount == 0 || count % 9 != 0 || edgeCount % 6 != 0) throw IOException("No viewable geometry in this file.")
+            if (count == 0 && edgeCount == 0 || count % 9 != 0 || edgeCount % 6 != 0) throw IOException("No viewable geometry in this file.")
+            if (count.toLong()*8 > Int.MAX_VALUE || edgeCount.toLong()*4 > Int.MAX_VALUE)
+                throw IOException("Geometry exceeds the runtime buffer capacity.")
             val min = DoubleArray(3) { Double.POSITIVE_INFINITY }
             val max = DoubleArray(3) { Double.NEGATIVE_INFINITY }
             for ((values, length) in listOf(points to count, edges to edgeCount)) for (i in 0 until length) {
@@ -64,7 +65,7 @@ object StlParser {
         }
     }
     private fun binary(input: InputStream, triangles: Long): Mesh {
-        if (triangles > MAX_TRIANGLES) throw IOException("Please choose an STL with at most 500,000 triangles.")
+        if (triangles*9 > Int.MAX_VALUE) throw IOException("Geometry exceeds the runtime array capacity.")
         val stream = DataInputStream(input)
         stream.readFully(ByteArray(84))
         val points = FloatArray(triangles.toInt()*9); val record = ByteArray(50)
@@ -91,8 +92,7 @@ object StlParser {
                 tag=="facet" && w.size==5 && w[1]=="normal" && state==0 && solid -> { state=1; vertices=0 }
                 tag=="outer" && w.size==2 && w[1]=="loop" && state==1 -> state=2
                 tag=="vertex" && w.size==4 && state==2 && vertices<3 -> {
-                    if (count>=MAX_TRIANGLES*9) throw IOException("Please choose an STL with at most 500,000 triangles.")
-                    if (count+3>points.size) points=points.copyOf(minOf(MAX_TRIANGLES*9, points.size*2))
+                    if (count.toLong()+3>points.size) points=points.copyOf(Geometry.grownCapacity(points.size, count.toLong()+3))
                     try { for (j in 1..3) points[count++]=w[j].toFloat() }
                     catch (_: NumberFormatException) { throw IOException("The STL contains an invalid vertex.") }
                     vertices++

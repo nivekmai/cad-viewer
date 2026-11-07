@@ -73,8 +73,7 @@ class ThreeMfParser private constructor(file: File) : Closeable {
                         for (axis in listOf("x","y","z")) obj.vertices.add(Geometry.number(required(a,axis)))
                     }
                     "triangle" -> {
-                        val obj=current
-                        if (obj==null || obj.faces.size>=StlParser.MAX_TRIANGLES) throw IOException("3MF mesh exceeds 500,000 triangles.")
+                        val obj=current ?: throw IOException("Invalid 3MF triangle.")
                         obj.faces.add(intArrayOf(Geometry.integer(required(a,"v1")),Geometry.integer(required(a,"v2")),Geometry.integer(required(a,"v3"))))
                     }
                     "component" -> (current ?: throw IOException("Invalid 3MF component.")).components.add(reference(a))

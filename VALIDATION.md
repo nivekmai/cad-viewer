@@ -1,4 +1,11 @@
-# CAD Viewer 1.5.2 validation
+# CAD Viewer 1.5.3 validation
+
+- Removed the fixed triangle/segment cutoff from STL, shared geometry, 3MF, and STEP/SKP workers. Dynamic array growth retains integer-index and buffer-capacity validation.
+- 65 JVM tests pass, including binary STL and shared geometry meshes with 500,001 triangles, and all thirteen CAD conversion outputs.
+- 20 CAD browser cases pass. Release build and lint pass; signed non-debuggable versionCode 11/versionName 1.5.3 verified against the existing update certificate.
+- Actual large-model performance on the phone remains untested. Conversion timeout remains two minutes.
+
+## Previous CAD Viewer 1.5.2 validation
 
 - Removed fixed input, expanded XML, and conversion-output byte limits throughout Android and workers.
 - Replaced the old oversized-file rejection test with successful parsing of a valid 65 MiB ASCII STL through ModelParser. Fixed STL header length narrowing above 2 GiB.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3
+
+- Removed the 500,000-triangle/segment cutoff from STL, shared geometry, 3MF, STEP, and SketchUp importing.
+- Geometry arrays grow as needed; integer-overflow checks retain runtime array/buffer capacity validation.
+
 ## 1.5.2
 
 - Removed fixed file-size limits from file copying, model parsers, CAD workers, expanded 3MF XML, and converted-output transfer. Large files are attempted regardless of their byte size.

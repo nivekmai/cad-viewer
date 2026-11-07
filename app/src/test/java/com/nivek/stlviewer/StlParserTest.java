@@ -71,14 +71,26 @@ public class StlParserTest {
             assertEquals(1, ModelParser.read(file, "large.stl").triangles);
         } finally { file.delete(); }
     }
-    @Test(expected = IOException.class) public void rejectsExcessiveTriangleCountBeforeAllocation() throws Exception {
+    @Test public void acceptsBinaryStlAboveFormerTriangleLimit() throws Exception {
         File file = File.createTempFile("parser-count", ".stl");
+        int count = 500_001;
         try {
-            try (RandomAccessFile out = new RandomAccessFile(file, "rw")) {
-                out.setLength(84L + (StlParser.MAX_TRIANGLES + 1L) * 50);
-                out.seek(80); out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(StlParser.MAX_TRIANGLES + 1).array());
+            byte[] one = binary();
+            byte[] header = java.util.Arrays.copyOf(one, 84);
+            ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).putInt(80, count);
+            try (OutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
+                out.write(header);
+                for (int i=0;i<count;i++) out.write(one,84,50);
             }
-            StlParser.read(file);
+            StlParser.Mesh mesh = StlParser.read(file);
+            assertEquals(count, mesh.triangles);
+            assertEquals(count*18, mesh.data.limit());
         } finally { file.delete(); }
+    }
+    @Test public void sharedGeometryGrowsPastFormerTriangleLimit() throws Exception {
+        Geometry geometry = new Geometry();
+        double[] a={0,0,0}, b={1,0,0}, c={0,1,0};
+        for(int i=0;i<500_001;i++) geometry.triangle(a,b,c);
+        assertEquals(500_001, geometry.mesh().triangles);
     }
 }

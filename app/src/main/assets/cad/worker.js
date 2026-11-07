@@ -1,5 +1,4 @@
 /* Offline STEP tessellation and DWG decoding. Each import owns a disposable worker. */
-const MAX_TRIANGLES = 500000;
 
 async function readBytes(name) {
   const response = await fetch(name);
@@ -26,7 +25,6 @@ async function readStep(input) {
     const indices = mesh.index && mesh.index.array;
     if (!positions || !indices || positions.length % 3 || indices.length % 3) throw new Error('Invalid tessellation returned for this STEP file.');
     count += indices.length / 3;
-    if (count > MAX_TRIANGLES) throw new Error('This STEP model exceeds 500,000 triangles. Try a smaller assembly.');
     colored ||= !!mesh.color || (mesh.brep_faces || []).some(face => !!face.color);
   }
   if (!count) throw new Error('This STEP file has no viewable surfaces or solids. Wire-only STEP models are not supported.');
@@ -98,7 +96,6 @@ async function readSkp(input) {
   for (const mesh of meshes) {
     if (mesh.indices.length % 3 || mesh.positions.length % 3) throw new Error('Invalid SketchUp surface data.');
     count += mesh.indices.length / 3;
-    if (count > MAX_TRIANGLES) throw new Error('This SketchUp model exceeds 500,000 triangles. Try a smaller model.');
   }
   if (!count) throw new Error('This SketchUp file has no viewable surfaces. Empty and edge-only models are not supported.');
   const bytes = new Uint8Array(84 + count * 50), view = new DataView(bytes.buffer);
