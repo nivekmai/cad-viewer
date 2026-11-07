@@ -13,7 +13,6 @@ class ThreeMfParser private constructor(file: File) : Closeable {
     private val zip=ZipFile(file)
     private val parts=mutableMapOf<String, Part>()
     private val geometry=Geometry()
-    private var expanded=0L
     private var nodes=0
     private class Object3d {
         val vertices=Geometry.Floats()
@@ -124,15 +123,8 @@ class ThreeMfParser private constructor(file: File) : Closeable {
     }
     private fun xml(path: String,handler: Handler) {
         val entry=zip.getEntry(path) ?: throw IOException("Missing 3MF part: $path")
-        if (entry.size>StlParser.MAX_BYTES) throw IOException("Expanded 3MF model is too large.")
         try {
-            object: FilterInputStream(zip.getInputStream(entry)) {
-                private fun count(n: Int) {
-                    if(n>0) { expanded+=n; if(expanded>StlParser.MAX_BYTES) throw IOException("Expanded 3MF data exceeds 64 MB.") }
-                }
-                override fun read(): Int = `in`.read().also { if(it>=0)count(1) }
-                override fun read(b: ByteArray,off: Int,len: Int): Int = `in`.read(b,off,len).also(::count)
-            }.use { stream ->
+            zip.getInputStream(entry).use { stream ->
                 val factory=SAXParserFactory.newInstance().apply { isNamespaceAware=true }
                 val reader=factory.newSAXParser().xmlReader
                 reader.contentHandler=handler; reader.entityResolver=handler; reader.errorHandler=handler

@@ -37,7 +37,6 @@ self.onmessage = async function (event) {
     // OpenSCAD can exit successfully after skipping missing includes/imports. Reject such partial geometry.
     if (status !== 0 || diagnostic.length) throw new Error(diagnostic.join('\n') || log.slice(-12).join('\n') || 'OpenSCAD could not compile this file.');
     const result = compiler.FS.readFile(output);
-    if (result.length > 64 * 1024 * 1024) throw new Error('The compiled model exceeds 64 MB.');
     if (result.length < 84) throw new Error('SCAD did not produce any viewable geometry.');
     self.postMessage({bytes: result, format}, [result.buffer]);
   } catch (error) {

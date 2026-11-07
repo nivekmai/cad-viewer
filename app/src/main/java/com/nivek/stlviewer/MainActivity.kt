@@ -213,12 +213,10 @@ class MainActivity : Activity() {
                     contentResolver.openInputStream(uri).use { input ->
                         if(input==null)throw IOException("This file could not be opened.")
                         source.outputStream().use { output ->
-                            val buffer=ByteArray(32768); var total=0L
+                            val buffer=ByteArray(32768)
                             while(true) {
                                 val read=input.read(buffer); if(read == -1)break
                                 if(Thread.currentThread().isInterrupted)throw InterruptedIOException()
-                                total+=read
-                                if(total>StlParser.MAX_BYTES)throw IOException("Please choose a model smaller than 64 MB.")
                                 output.write(buffer,0,read)
                             }
                         }

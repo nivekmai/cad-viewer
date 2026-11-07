@@ -1,12 +1,10 @@
 /* Offline STEP tessellation and DWG decoding. Each import owns a disposable worker. */
-const MAX_BYTES = 64 * 1024 * 1024;
 const MAX_TRIANGLES = 500000;
 
 async function readBytes(name) {
   const response = await fetch(name);
   if (!response.ok) throw new Error('Could not load the local CAD reader.');
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length > MAX_BYTES) throw new Error('Please choose a model smaller than 64 MB.');
   return bytes;
 }
 
@@ -75,7 +73,6 @@ async function readDwg(input) {
   let bytes;
   try { bytes = dwg.FS.readFile('/output.dxf'); }
   catch { throw new Error('The DWG reader did not produce viewable drawing data.'); }
-  if (bytes.length > MAX_BYTES) throw new Error('Expanded DWG drawing exceeds 64 MB.');
   if (!bytes.length) throw new Error('The DWG file contains no drawing data.');
   return {
     bytes, format: 'dxf', units: '',

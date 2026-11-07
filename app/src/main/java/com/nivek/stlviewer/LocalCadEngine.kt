@@ -79,12 +79,10 @@ class LocalCadEngine(private val activity: Activity) {
     }
     class Bridge(private val output: File,private val result: CompletableFuture<Compiled>) {
         private var stream: OutputStream?=output.outputStream()
-        private var size=0L
         @JavascriptInterface @Synchronized fun chunk(base64: String) {
             if(result.isDone)return
             try {
-                val bytes=Base64.decode(base64,Base64.DEFAULT); size+=bytes.size
-                if(size>StlParser.MAX_BYTES)throw IOException("Compiled model exceeds 64 MB.")
+                val bytes=Base64.decode(base64,Base64.DEFAULT)
                 stream?.write(bytes)
             } catch(e: IOException) { failed(e.message) }
               catch(e: IllegalArgumentException) { failed(e.message) }

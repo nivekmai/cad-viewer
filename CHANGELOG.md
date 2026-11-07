@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2
+
+- Removed fixed file-size limits from file copying, model parsers, CAD workers, expanded 3MF XML, and converted-output transfer. Large files are attempted regardless of their byte size.
+- Fixed STL header reading for files larger than 2 GiB. Geometry-count and conversion-time limits remain.
+
 ## 1.5.1
 
 - Fixed SketchUp files being disabled in Android’s file picker and CAD Viewer missing from Open with/Share by accepting Android’s historical `application/vnd.koan` and `application/x-koan` MIME labels for `.skp`.

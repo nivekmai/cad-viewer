@@ -1,4 +1,12 @@
-# CAD Viewer 1.5.1 validation
+# CAD Viewer 1.5.2 validation
+
+- Removed fixed input, expanded XML, and conversion-output byte limits throughout Android and workers.
+- Replaced the old oversized-file rejection test with successful parsing of a valid 65 MiB ASCII STL through ModelParser. Fixed STL header length narrowing above 2 GiB.
+- 64 JVM tests (including converted CAD integration), 20 CAD browser cases, and 10 SCAD cases pass. Release build and lint pass.
+- Verified non-debuggable 1.5.2 release, versionCode 10, signed with the existing update certificate.
+- Geometry-count and conversion-time limits remain. No device smoke test or test of the user's large SKP file was possible.
+
+## Previous CAD Viewer 1.5.1 validation
 
 - Added Android’s historical `.skp` MIME labels to the picker and VIEW/SEND intent filters.
 - Release build and lint pass. Verified both labels in the merged and packaged manifests for both actions.

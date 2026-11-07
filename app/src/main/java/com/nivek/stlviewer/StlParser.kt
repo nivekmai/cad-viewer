@@ -7,7 +7,6 @@ import kotlin.math.sqrt
 /** Binary STL is detected by its length rather than the ambiguous "solid" prefix. */
 object StlParser {
     const val MAX_TRIANGLES = 500_000
-    const val MAX_BYTES = 64L * 1024 * 1024
 
     class Mesh @JvmOverloads @Throws(IOException::class) constructor(
         points: FloatArray, count: Int, edges: FloatArray = FloatArray(0), edgeCount: Int = 0
@@ -53,10 +52,9 @@ object StlParser {
     }
     @JvmStatic @Throws(IOException::class)
     fun read(file: File): Mesh {
-        if (file.length() > MAX_BYTES) throw IOException("Please choose an STL smaller than 64 MB.")
         file.inputStream().buffered().use { input ->
             input.mark(84)
-            val header = ByteArray(minOf(84, file.length().toInt()))
+            val header = ByteArray(minOf(84L, file.length()).toInt())
             DataInputStream(input).readFully(header); input.reset()
             if (header.size == 84) {
                 val triangles = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt(80).toLong() and 0xffffffffL

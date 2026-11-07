@@ -59,11 +59,16 @@ public class StlParserTest {
         StlParser.Mesh mesh = parse(triangle.replace("vertex 0 0 0", "vertex -3e38 0 0").replace("vertex 2 0 0", "vertex 3e38 0 0"));
         for (int i = 0; i < mesh.data.limit(); i++) assertTrue(Float.isFinite(mesh.data.get(i)));
     }
-    @Test(expected = IOException.class) public void rejectsOversizedFileBeforeAllocation() throws Exception {
-        File file = File.createTempFile("parser-limit", ".stl");
+    @Test public void acceptsValidFileLargerThanOldSizeCutoff() throws Exception {
+        File file = File.createTempFile("parser-large", ".stl");
         try {
-            try (RandomAccessFile out = new RandomAccessFile(file, "rw")) { out.setLength(StlParser.MAX_BYTES + 1); }
-            StlParser.read(file);
+            try (OutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
+                out.write(triangle.getBytes(StandardCharsets.US_ASCII));
+                byte[] padding = (" ".repeat(1023) + "\n").getBytes(StandardCharsets.US_ASCII);
+                for (int i=0; i<65*1024; i++) out.write(padding);
+            }
+            assertTrue(file.length() > 64L*1024*1024);
+            assertEquals(1, ModelParser.read(file, "large.stl").triangles);
         } finally { file.delete(); }
     }
     @Test(expected = IOException.class) public void rejectsExcessiveTriangleCountBeforeAllocation() throws Exception {

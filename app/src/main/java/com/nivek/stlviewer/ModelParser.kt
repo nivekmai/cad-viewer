@@ -10,7 +10,6 @@ object ModelParser {
     @JvmStatic fun needsEngine(name: String) = extension(name) in setOf("scad", "step", "stp", "dwg", "skp")
     @JvmStatic @Throws(IOException::class)
     fun read(file: File, name: String): StlParser.Mesh {
-        if (file.length() > StlParser.MAX_BYTES) throw IOException("Please choose a model smaller than 64 MB.")
         return when (extension(name)) {
             "obj" -> ObjParser.read(file)
             "3mf" -> ThreeMfParser.read(file)
