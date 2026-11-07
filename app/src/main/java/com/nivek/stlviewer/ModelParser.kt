@@ -11,6 +11,7 @@ object ModelParser {
     @JvmStatic @Throws(IOException::class)
     fun read(file: File, name: String): StlParser.Mesh {
         return when (extension(name)) {
+            "cadmesh" -> CadMeshParser.read(file)
             "obj" -> ObjParser.read(file)
             "3mf" -> ThreeMfParser.read(file)
             "dxf" -> DxfParser.read(file)

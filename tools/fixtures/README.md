@@ -22,3 +22,4 @@ SketchUp fixtures in `skp/` come from OpenSKP commit `e7b467452be72b105ca4f7a965
 `packages/cpp/tests/fixtures`, under its MIT license. They exercise legacy/modern
 containers, nested components, placement/scale, and an empty model.
 `skp/chair_and_table.skp` comes from `examples/web-viewer/samples` in the same commit.
+`skp/legacy_v2020_textured.skp` comes from `packages/typescript/tests/fixtures` at the same upstream commit; it contains an embedded PNG and different front/back materials.

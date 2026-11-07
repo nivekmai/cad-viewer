@@ -1,4 +1,13 @@
-# CAD Viewer 1.5.3 validation
+# CAD Viewer 1.6.0 validation
+
+- Replaced SketchUp-to-STL transfer with an internal binary mesh carrying UVs, material batches, alpha modes, front/back sides, and embedded PNG/JPEG images.
+- 71 JVM tests pass, including six new mesh-transfer validation tests and fourteen real converted CAD inputs.
+- 21 CAD browser cases pass, including a real textured SketchUp fixture with preserved embedded image, UV coordinates, and material associations.
+- Rendered that fixture with the exact Android GLSL shader sources in Chromium WebGL; verified checker texture pixels and material-color pixels, and inspected the screenshot. CI runs this check.
+- Release build/lint pass. Phone-specific BitmapFactory/GLUtils uploads, gestures, and GL context recreation require a device smoke test.
+- Projected texture mapping and overlapping transparency are approximate; loose SketchUp edges, text, dimensions, and scene styles remain omitted. Other formats retain single-color rendering.
+
+## Previous CAD Viewer 1.5.3 validation
 
 - Removed the fixed triangle/segment cutoff from STL, shared geometry, 3MF, and STEP/SKP workers. Dynamic array growth retains integer-index and buffer-capacity validation.
 - 65 JVM tests pass, including binary STL and shared geometry meshes with 500,001 triangles, and all thirteen CAD conversion outputs.

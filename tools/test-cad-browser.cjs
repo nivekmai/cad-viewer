@@ -17,6 +17,25 @@ const server = http.createServer((request,response) => {
     response.end(fs.readFileSync(path.join(assets,name)));
   } catch {response.writeHead(404);response.end();}
 });
+function cadMeshBounds(bytes) {
+  assert.equal(bytes.toString('ascii',0,4),'CVM1');
+  const vertices=bytes.readInt32LE(4),batches=bytes.readInt32LE(8),images=bytes.readInt32LE(12);
+  const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
+  for(let i=0;i<vertices;i++)for(let axis=0;axis<3;axis++) {
+    const value=bytes.readFloatLE(16+i*20+axis*4);assert.ok(Number.isFinite(value));
+    min[axis]=Math.min(min[axis],value);max[axis]=Math.max(max[axis],value);
+  }
+  for(let i=0;i<vertices;i++)for(const axis of [3,4])assert.ok(Number.isFinite(bytes.readFloatLE(16+i*20+axis*4)));
+  let offset=16+vertices*20, next=0, textured=0;
+  for(let i=0;i<batches;i++,offset+=36) {
+    assert.equal(bytes.readInt32LE(offset),next);next+=bytes.readInt32LE(offset+4);
+    const texture=bytes.readInt32LE(offset+24);assert.ok(texture>=-1 && texture<images);if(texture>=0)textured++;
+  }
+  assert.equal(next,vertices);
+  for(let i=0;i<images;i++) {const n=bytes.readInt32LE(offset);assert.ok(n>0);offset+=4+n;}
+  assert.equal(offset,bytes.length);
+  return {triangles:vertices/3,min,max,dimensions:max.map((n,i)=>n-min[i]),images,textured};
+}
 function stlBounds(bytes) {
   const count=bytes.readUInt32LE(80),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
   assert.equal(bytes.length,84+count*50);assert.ok(count>0);
@@ -41,10 +60,11 @@ function stlBounds(bytes) {
       ['DWG 2000 mixed','dwg','dwg/example_2000.dwg','dxf'],
       ['DWG 2007 mixed','dwg','dwg/example_2007.dwg','dxf'],
       ['DWG 2018 mixed','dwg','dwg/example_2018.dwg','dxf'],
-      ['SKP legacy nested','skp','skp/nesting_2017.skp','stl'],
-      ['SKP modern nested','skp','skp/nesting_2021.skp','stl'],
-      ['SKP scaled components','skp','skp/instance_scale_term_2021.skp','stl'],
-      ['SKP furniture','skp','skp/chair_and_table.skp','stl'],
+      ['SKP legacy nested','skp','skp/nesting_2017.skp','cadmesh'],
+      ['SKP modern nested','skp','skp/nesting_2021.skp','cadmesh'],
+      ['SKP scaled components','skp','skp/instance_scale_term_2021.skp','cadmesh'],
+      ['SKP furniture','skp','skp/chair_and_table.skp','cadmesh'],
+      ['SKP textured','skp','skp/legacy_v2020_textured.skp','cadmesh'],
       ['empty SKP','skp','skp/blank_v17.skp','error'],
       ['invalid SKP','skp',Buffer.from('not a SketchUp file'),'error'],
       ['truncated SKP','skp',fs.readFileSync(path.join(fixtures,'skp/nesting_2021.skp')).subarray(0,100),'error'],
@@ -71,16 +91,17 @@ function stlBounds(bytes) {
         const bytes=Buffer.concat(output.chunks.map(s=>Buffer.from(s,'base64')));
         const stem=name.replaceAll(/[^a-z0-9]/gi,'_');
         fs.mkdirSync(outputDir,{recursive:true});fs.writeFileSync(path.join(outputDir,stem+'.'+expected),bytes);
-        if(expected==='stl'){
-          assert.equal(output.units,'millimeter');results[name]=stlBounds(bytes);
+        if(expected==='stl'||expected==='cadmesh'){
+          assert.equal(output.units,'millimeter');results[name]=expected==='stl'?stlBounds(bytes):cadMeshBounds(bytes);
           if(name.startsWith('STEP millimeters')||name.startsWith('STEP inches'))for(const d of results[name].dimensions)assert.ok(Math.abs(d-1000)<.01);
           if(name==='SKP legacy nested'||name==='SKP modern nested') {
-            assert.equal(results[name].triangles,6);
+            assert.ok(results[name].triangles>=6);
             for(const [i,d] of [1270,254,0].entries())assert.ok(Math.abs(results[name].dimensions[i]-d)<.01, 'Nested SKP placement/axis mismatch');
           }
+          if(name==='SKP textured') {assert.equal(results[name].images,1);assert.equal(results[name].textured,1);}
           if(name==='SKP furniture')assert.ok(results[name].triangles>100);
           if(name==='SKP scaled components') {
-            assert.equal(results[name].triangles,24);
+            assert.ok(results[name].triangles>=24);
             for(const [i,d] of [533.4,25.4,25.4].entries())assert.ok(Math.abs(results[name].dimensions[i]-d)<.01, 'SKP placement/scale/axis mismatch');
           }
           if(name==='STP assembly')assert.ok(results[name].triangles>100,'Assembly should contain many faces');

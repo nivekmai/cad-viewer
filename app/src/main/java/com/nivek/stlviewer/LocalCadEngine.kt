@@ -89,7 +89,7 @@ class LocalCadEngine(private val activity: Activity) {
         }
         @JavascriptInterface @Synchronized fun finished(format: String?,units: String?,notice: String?) {
             if(result.isDone)return
-            if(format!="stl" && format!="dxf") { failed("Invalid output from CAD reader."); return }
+            if(format!="stl" && format!="dxf" && format!="cadmesh") { failed("Invalid output from CAD reader."); return }
             close(); result.complete(Compiled(output,format,units.orEmpty(),notice.orEmpty()))
         }
         @JavascriptInterface @Synchronized fun failed(message: String?) { close(); result.completeExceptionally(IOException(message)) }

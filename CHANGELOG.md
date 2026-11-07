@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.0
+
+- Preserved SketchUp material colors, embedded PNG/JPEG textures, UV coordinates, and front/back materials through import and OpenGL rendering.
+- Added texture tiling, alpha cutouts, and basic transparency; textures reload after GL context recreation and old model textures are released.
+- Projected mapping and overlapping transparency may be approximate; other formats still use the existing single-color renderer.
+
 ## 1.5.3
 
 - Removed the 500,000-triangle/segment cutoff from STL, shared geometry, 3MF, STEP, and SketchUp importing.

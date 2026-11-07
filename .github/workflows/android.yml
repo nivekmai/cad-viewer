@@ -50,6 +50,7 @@ jobs:
           git diff --exit-code -- app/src/main/assets/cad/openskp.js
           npx --prefix tools playwright install --with-deps chromium
           node tools/test-cad-browser.cjs
+          node tools/test-texture-rendering.cjs
           node tools/test-scad-browser.cjs
           ./gradlew --no-daemon :app:testDebugUnitTest -PcadIntegration=true
       - name: Save builds

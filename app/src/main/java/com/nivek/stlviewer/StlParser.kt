@@ -14,6 +14,9 @@ object StlParser {
         @JvmField val lines: FloatBuffer
         @JvmField val triangles = count / 9
         @JvmField val segments = edgeCount / 6
+        var textureCoordinates: FloatBuffer? = null
+        var surfaces: List<CadMeshParser.Surface> = emptyList()
+        var textures: List<ByteArray> = emptyList()
         @JvmField var units = "units"
         @JvmField var notice = ""
         @JvmField val width: Double

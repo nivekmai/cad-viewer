@@ -85,40 +85,16 @@ async function readSkp(input) {
   let scene;
   try {
     scene = OpenSkp.buildScene(input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength), {
-      frontSideOnly: true, respectEdgeVisibility: true,
+      frontSideOnly: false, respectEdgeVisibility: true,
       onLog(level, message) { if (level !== 'debug' && level !== 'info' && warnings.length < 10) warnings.push(String(message)); }
     });
   } catch (error) {
     throw new Error('This SketchUp file could not be read. Its version or features may not be supported, or it may be damaged. ' + String(error.message || error).slice(0, 300));
   }
-  const meshes = scene.glbPrimitives;
-  let count = 0;
-  for (const mesh of meshes) {
-    if (mesh.indices.length % 3 || mesh.positions.length % 3) throw new Error('Invalid SketchUp surface data.');
-    count += mesh.indices.length / 3;
-  }
-  if (!count) throw new Error('This SketchUp file has no viewable surfaces. Empty and edge-only models are not supported.');
-  const bytes = new Uint8Array(84 + count * 50), view = new DataView(bytes.buffer);
-  view.setUint32(80, count, true);
-  let offset = 84;
-  for (const mesh of meshes) {
-    for (let i = 0; i < mesh.indices.length; i += 3) {
-      offset += 12;
-      for (let v = 0; v < 3; v++) {
-        const index = mesh.indices[i + v];
-        if (!Number.isInteger(index) || index < 0 || index * 3 + 2 >= mesh.positions.length) throw new Error('Invalid SketchUp vertex index.');
-        const p = mesh.positions.subarray(index * 3, index * 3 + 3);
-        // Baked scene is metres, Y-up. Restore SketchUp's Z-up and use millimetres.
-        for (const coordinate of [p[0] * 1000, -p[2] * 1000, p[1] * 1000]) {
-          if (!Number.isFinite(coordinate) || Math.abs(coordinate) > 3.402823466e38) throw new Error('Invalid SketchUp coordinate.');
-          view.setFloat32(offset, coordinate, true); offset += 4;
-        }
-      }
-      offset += 2;
-    }
-  }
-  return {bytes, format: 'stl', units: 'millimeter',
-    notice: 'SketchUp surface preview. Materials, textures, loose edges, text, dimensions, and scene styles are not displayed. Some file versions and features may be unsupported.' +
+  importScripts('skp-mesh.js');
+  const bytes=encodeSkpScene(scene);
+  return {bytes, format: 'cadmesh', units: 'millimeter',
+    notice: 'SketchUp materials and embedded PNG/JPEG textures. Projected textures may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some file versions and features may be unsupported.' +
       (warnings.length ? '\nReader notes: ' + warnings.join('\n') : '')};
 }
 
