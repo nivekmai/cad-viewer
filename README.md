@@ -10,7 +10,7 @@ Download a signed APK from GitHub Releases and open it on your phone. An APK nam
 
 ## Opening files
 
-**Open model** starts at the actual internal-storage `Download` folder, then remembers the last selected location. It filters for supported CAD MIME types by default. Generic binary, plain-text, and ZIP types remain included because providers commonly use them for STL/OBJ/SCAD/3MF; this may also show some unrelated files with those generic labels. PNG/JPEG image MIME types are excluded.
+**Open model** starts at the actual internal-storage `Download` folder, then remembers the last selected location. It filters for supported CAD MIME types by default. Generic binary, plain-text, and ZIP types remain included because providers commonly use them for STL/OBJ/SCAD/3MF; this may also show some unrelated files with those generic labels. PNG/JPEG image MIME types are excluded. SketchUp also accepts Android’s historical `application/vnd.koan` and `application/x-koan` labels in the picker and Open with/Share.
 
 Use **⋮ → Show all files** if a provider mislabels your model. The Android **Downloads shortcut** can omit files that are visible under **Pixel 9 Pro Fold → Download**; navigating to the actual folder avoids that provider discrepancy.
 

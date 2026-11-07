@@ -297,6 +297,8 @@ class MainActivity : Activity() {
             "model/3mf","application/vnd.ms-package.3dmanufacturing-3dmodel+xml","application/3mf",
             "application/x-openscad","application/x-scad","text/x-scad",
             "application/dxf","application/x-dxf","image/vnd.dxf","image/x-dxf","drawing/x-dxf",
+            // Android providers also label .skp using historical Koan MIME types.
+            "application/vnd.koan","application/x-koan",
             "application/vnd.sketchup.skp","application/x-sketchup","application/x-skp",
             "model/step","application/step","application/x-step","application/x-stp","text/x-step",
             "image/vnd.dwg","image/x-dwg","application/acad","application/x-acad","application/dwg","application/x-dwg",

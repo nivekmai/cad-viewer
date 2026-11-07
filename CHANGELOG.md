@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+- Fixed SketchUp files being disabled in Android’s file picker and CAD Viewer missing from Open with/Share by accepting Android’s historical `application/vnd.koan` and `application/x-koan` MIME labels for `.skp`.
+
 ## 1.5.0
 
 - Added offline SketchUp (.skp) surface previews with nested component placements and millimeter dimensions.

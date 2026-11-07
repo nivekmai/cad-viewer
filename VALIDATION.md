@@ -1,4 +1,11 @@
-# CAD Viewer 1.5.0 validation
+# CAD Viewer 1.5.1 validation
+
+- Added Android’s historical `.skp` MIME labels to the picker and VIEW/SEND intent filters.
+- Release build and lint pass. Verified both labels in the merged and packaged manifests for both actions.
+- Signed APK has versionCode 9/versionName 1.5.1, is non-debuggable, and uses the existing update certificate.
+- File-provider behavior needs confirmation on the user's phone; their SKP file has not been tested. The 64 MiB input limit remains.
+
+## Previous CAD Viewer 1.5.0 validation
 
 - Added offline SketchUp importing with OpenSKP 1.5.0; reproducible browser bundle and dependency integrity hashes are pinned.
 - 20 CAD browser cases pass, including legacy 2017 and modern 2021 SketchUp containers, nested components, exact placement/scale and Z-up bounds, a chair/table model, and empty/invalid/truncated SKP rejection.

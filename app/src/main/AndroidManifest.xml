@@ -26,6 +26,9 @@
                 <data android:mimeType="application/step" />
                 <data android:mimeType="application/x-step" />
                 <data android:mimeType="text/x-step" />
+                <!-- Android MIME tables associate .skp with historical Koan types. -->
+                <data android:mimeType="application/vnd.koan" />
+                <data android:mimeType="application/x-koan" />
                 <data android:mimeType="application/vnd.sketchup.skp" />
                 <data android:mimeType="application/x-sketchup" />
                 <data android:mimeType="application/x-skp" />
@@ -57,6 +60,9 @@
                 <data android:mimeType="application/step" />
                 <data android:mimeType="application/x-step" />
                 <data android:mimeType="text/x-step" />
+                <!-- Android MIME tables associate .skp with historical Koan types. -->
+                <data android:mimeType="application/vnd.koan" />
+                <data android:mimeType="application/x-koan" />
                 <data android:mimeType="application/vnd.sketchup.skp" />
                 <data android:mimeType="application/x-sketchup" />
                 <data android:mimeType="application/x-skp" />
