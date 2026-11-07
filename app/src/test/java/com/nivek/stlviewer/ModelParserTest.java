@@ -110,7 +110,7 @@ public class ModelParserTest {
     @Test(expected=IOException.class)public void dxfRejectsInvalidGroups()throws Exception {text(".dxf","oops\nLINE\n");}
     @Test public void formatDetectionIsCaseInsensitive(){assertTrue(ModelParser.supported("part.SCAD"));assertTrue(ModelParser.supported("part.3MF"));assertFalse(ModelParser.supported("image.png"));}
     @Test public void cadFormatsAndAliasesUseLocalEngine(){
-        for(String filename:new String[]{"part.STEP","assembly.stp","drawing.DWG"}){assertTrue(ModelParser.supported(filename));assertTrue(ModelParser.needsEngine(filename));}
+        for(String filename:new String[]{"part.STEP","assembly.stp","drawing.DWG","model.SKP"}){assertTrue(ModelParser.supported(filename));assertTrue(ModelParser.needsEngine(filename));}
         assertFalse(ModelParser.needsEngine("part.stl"));assertFalse(ModelParser.supported("file.pdf"));
     }
     @Test public void dxfPolyfacePointAndEdgeRecordsDoNotPreventPreview()throws Exception {

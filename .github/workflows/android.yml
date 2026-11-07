@@ -46,6 +46,8 @@ jobs:
       - name: Verify offline CAD and SCAD engines
         run: |
           npm ci --prefix tools
+          node tools/bundle-skp.cjs
+          git diff --exit-code -- app/src/main/assets/cad/openskp.js
           npx --prefix tools playwright install --with-deps chromium
           node tools/test-cad-browser.cjs
           node tools/test-scad-browser.cjs

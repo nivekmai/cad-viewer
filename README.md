@@ -14,7 +14,7 @@ Download a signed APK from GitHub Releases and open it on your phone. An APK nam
 
 Use **⋮ → Show all files** if a provider mislabels your model. The Android **Downloads shortcut** can omit files that are visible under **Pixel 9 Pro Fold → Download**; navigating to the actual folder avoids that provider discrepancy.
 
-**Browse folder** is a fallback: grant access to a model folder and the app lists matching filenames itself, including subfolders. Android may prevent selecting the entire Downloads root; choose the subfolder containing your models. STEP (`.step`/`.stp`) and DWG are included in both the picker filters and folder browser. This browser filters by filename extension, not MIME type. Files can also be opened/shared from another app.
+**Browse folder** is a fallback: grant access to a model folder and the app lists matching filenames itself, including subfolders. Android may prevent selecting the entire Downloads root; choose the subfolder containing your models. STEP (`.step`/`.stp`) DWG, and SketchUp (`.skp`) are included in both the picker filters and folder browser. This browser filters by filename extension, not MIME type. Files can also be opened/shared from another app.
 
 ## Supported content
 
@@ -26,11 +26,12 @@ Use **⋮ → Show all files** if a provider mislabels your model. The Android *
 | DXF | ASCII DXF model-space LINE, LWPOLYLINE (including bulges), 2D/3D POLYLINE, polyfaces, polygon meshes, CIRCLE, ARC, ELLIPSE, 3DFACE, SOLID, TRACE, INSERT/block arrays, and control-point NURBS SPLINE entities. Curves are tessellated into line segments. TEXT, MTEXT, visible ATTRIB/constant ATTDEF, LEADER lines, and DIMENSION saved drawing blocks are also rendered. Binary DXF, hatches, mesh smoothing, thickness, line weights, and some spline forms are not supported. Skipped entities are reported in the viewing notes. |
 | STEP / STP | Solids, surfaces, assemblies, placements, and curved geometry tessellated offline using OpenCascade. Model dimensions are converted to millimeters. Colors/materials, wire-only STEP files, compressed STEP, and external part files are not displayed. |
 | DWG | Offline LibreDWG conversion into the supported drawing geometry: lines, polylines, arcs, circles, ellipses, supported splines, blocks, polyfaces, and polygon meshes, plus the text and dimension support listed for DXF. Tested with DWG 2000, 2007, and 2018 examples. Proprietary ACIS/3DSOLID geometry, proxy objects, external references, hatches, and other unsupported entities are not rendered. Viewing notes identify unsupported content; drawings with no supported geometry report an error. |
+| SketchUp / SKP | Offline triangulated surfaces with nested component placements, converted to millimeters. Tested with legacy 2017 and modern 2021 containers. Materials, textures, loose edges, annotations, dimensions, and scene styles are not displayed; some versions/features may be unsupported. |
 | SCAD | Self-contained scripts compiled offline by bundled OpenSCAD WASM (2022.03.20), including variables, modules, loops, Boolean operations, extrusion, and bundled MCAD/fonts. 3D results are shaded meshes; 2D results are line drawings. External includes/imports and newer OpenSCAD-only language features are not supported. Missing dependencies/errors are shown instead of displaying an incomplete model. |
 
-Limits: 64 MiB input/expanded 3MF XML, 500,000 rendered triangles/line segments, and two minutes per CAD conversion/SCAD compilation. STEP, DWG, and SCAD require a working, current Android System WebView. The bundled DWG runtime reserves a 1 GiB WebAssembly address space and grows as needed, so large drawings may exceed device resources. The Cancel button stops loading/conversion. The current model remains visible after a failed or cancelled load.
+Limits: 64 MiB input/expanded 3MF XML, 500,000 rendered triangles/line segments, and two minutes per CAD conversion/SCAD compilation. STEP, DWG, SKP, and SCAD require a working, current Android System WebView. The bundled DWG runtime reserves a 1 GiB WebAssembly address space and grows as needed, so large drawings may exceed device resources. The Cancel button stops loading/conversion. The current model remains visible after a failed or cancelled load.
 
-The model and camera survive rotation and activity recreation. A private local copy supports restoration; SCAD/STEP/DWG is converted again on process recreation. Geometry is shown with a single surface color. STL/OBJ dimensions use unspecified model units; 3MF/DXF/DWG use declared units when available; STEP displays millimeters.
+The model and camera survive rotation and activity recreation. A private local copy supports restoration; SCAD/STEP/DWG/SKP is converted again on process recreation. Geometry is shown with a single surface color. STL/OBJ dimensions use unspecified model units; 3MF/DXF/DWG use declared units when available; STEP/SKP display millimeters.
 
 ## Text and dimensions
 
@@ -61,12 +62,12 @@ NODE_PATH=/tmp/stl-viewer-browser-test/node_modules node tools/test-scad-browser
 NODE_PATH=/tmp/stl-viewer-browser-test/node_modules node tools/test-cad-browser.cjs
 ```
 
-The SCAD suite checks 3D solids, Booleans, modules/loops, fonts, MCAD, 2D fallback, missing includes/imports, syntax errors, and empty files. The CAD suite checks STEP inch/mm equivalence, assemblies, placement, curved surfaces, multiple DWG generations, and malformed files. `CadIntegrationTest.kt` loads all nine converted results through the Kotlin geometry parsers (`./gradlew :app:testDebugUnitTest -PcadIntegration=true`). Native Android WebView and picker behavior still require a device smoke test.
+The SCAD suite checks 3D solids, Booleans, modules/loops, fonts, MCAD, 2D fallback, missing includes/imports, syntax errors, and empty files. The CAD suite checks STEP inch/mm equivalence, assemblies, placement, curved surfaces, multiple DWG generations, legacy/modern SketchUp nested components and placement/scale, and malformed files. `CadIntegrationTest.kt` loads all thirteen converted results through the Kotlin geometry parsers (`./gradlew :app:testDebugUnitTest -PcadIntegration=true`). Native Android WebView and picker behavior still require a device smoke test.
 
 ## Device smoke test
 
 1. Update the existing app; open an STL from the actual Downloads folder and return to the picker to confirm the location is remembered. Check that PNG/JPEG files are excluded by default; **⋮ → Show all files** should reveal them.
-2. Use Browse folder to open STL/OBJ/3MF/DXF/SCAD/STEP/STP/DWG from a subfolder.
+2. Use Browse folder to open STL/OBJ/3MF/DXF/SCAD/STEP/STP/DWG/SKP from a subfolder.
 3. Rotate, pan, pinch, and reset; check drawing geometry from above.
 4. Rotate/fold the phone, background/restore, and verify the camera/model remain usable.
 5. Open a bad file and cancel a CAD conversion; the previous model should remain available.
@@ -84,6 +85,8 @@ The viewer uses Android platform widgets/OpenGL. CAD conversion runs inside bund
 
 - [STEP reader source](https://github.com/kovacsv/occt-import-js/tree/c2148e54b456b571238d35cac037d304053d64b2)
 - [DWG reader source](https://github.com/mlightcad/libredwg-web/tree/v0.7.15)
+
+SketchUp uses [OpenSKP](https://github.com/iamahsanmehmood/openskp) 1.5.0; see `third_party/openskp/NOTICE.md` for bundle reproduction and licenses.
 
 See `third_party/openscad/NOTICE.md`, `third_party/occt/NOTICE.md`, and `third_party/libredwg/NOTICE.md` for compiler provenance, licenses, source/build references, and local changes. Notices are also included in the APK assets.
 

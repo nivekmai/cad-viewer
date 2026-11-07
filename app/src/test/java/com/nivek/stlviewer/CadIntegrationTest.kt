@@ -11,7 +11,7 @@ class CadIntegrationTest {
         assumeTrue(System.getProperty("cad.integration") == "true")
         val directory=File(requireNotNull(System.getProperty("cad.outputDir")))
         val names=listOf("DWG_2000_mixed.dxf","DWG_2007_mixed.dxf","DWG_2018_mixed.dxf","DWG_2018_small.dxf",
-            "STEP_curved_surfaces.stl","STEP_inches.stl","STEP_millimeters.stl","STEP_placement.stl","STP_assembly.stl")
+            "STEP_curved_surfaces.stl","STEP_inches.stl","STEP_millimeters.stl","STEP_placement.stl","STP_assembly.stl", "SKP_legacy_nested.stl", "SKP_modern_nested.stl", "SKP_scaled_components.stl", "SKP_furniture.stl")
         for(name in names) {
             val file=File(directory,name)
             assertTrue("Missing browser output: $name",file.isFile)

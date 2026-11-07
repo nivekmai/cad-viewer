@@ -26,6 +26,9 @@
                 <data android:mimeType="application/step" />
                 <data android:mimeType="application/x-step" />
                 <data android:mimeType="text/x-step" />
+                <data android:mimeType="application/vnd.sketchup.skp" />
+                <data android:mimeType="application/x-sketchup" />
+                <data android:mimeType="application/x-skp" />
                 <data android:mimeType="image/vnd.dwg" />
                 <data android:mimeType="image/x-dwg" />
                 <data android:mimeType="application/acad" />
@@ -54,6 +57,9 @@
                 <data android:mimeType="application/step" />
                 <data android:mimeType="application/x-step" />
                 <data android:mimeType="text/x-step" />
+                <data android:mimeType="application/vnd.sketchup.skp" />
+                <data android:mimeType="application/x-sketchup" />
+                <data android:mimeType="application/x-skp" />
                 <data android:mimeType="image/vnd.dwg" />
                 <data android:mimeType="image/x-dwg" />
                 <data android:mimeType="application/acad" />

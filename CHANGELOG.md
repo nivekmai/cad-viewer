@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- Added offline SketchUp (.skp) surface previews with nested component placements and millimeter dimensions.
+- Added SKP picker filters, folder browsing, and open/share handling.
+- Materials, textures, standalone edges, annotations, dimensions, and scene styles are not displayed; some SketchUp versions/features may be unsupported.
+- Added browser regression tests for legacy/modern SKP files, component scale/placement, empty models, and invalid/truncated files.
+
 ## 1.4.0
 
 - Migrated the Android UI, OpenGL renderer, CAD bridge, and all model/text parsers from Java to Kotlin.

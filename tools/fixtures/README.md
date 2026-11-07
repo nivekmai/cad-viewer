@@ -17,3 +17,8 @@ https://github.com/LibreDWG/libredwg/tree/master/test/test-data
 - `dwg/example_2018.dwg`
 
 `app/src/test/resources/dwg-sample-2018.dxf` is generated from `sample_2018.dwg` by the bundled reader. Upstream licenses/source archives are in `third_party/occt` and `third_party/libredwg`. SHA256SUMS identifies the exact test inputs.
+
+SketchUp fixtures in `skp/` come from OpenSKP commit `e7b467452be72b105ca4f7a96559dd2d342cbb47`,
+`packages/cpp/tests/fixtures`, under its MIT license. They exercise legacy/modern
+containers, nested components, placement/scale, and an empty model.
+`skp/chair_and_table.skp` comes from `examples/web-viewer/samples` in the same commit.

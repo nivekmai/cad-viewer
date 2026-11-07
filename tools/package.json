@@ -1,1 +1,1 @@
-{"name":"cad-viewer-validation","private":true,"version":"1.0.0","devDependencies":{"playwright":"1.58.2"}}
+{"name":"cad-viewer-validation","private":true,"version":"1.0.0","devDependencies":{"esbuild":"0.25.12","openskp":"1.5.0","playwright":"1.58.2"}}

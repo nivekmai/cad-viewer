@@ -41,6 +41,13 @@ function stlBounds(bytes) {
       ['DWG 2000 mixed','dwg','dwg/example_2000.dwg','dxf'],
       ['DWG 2007 mixed','dwg','dwg/example_2007.dwg','dxf'],
       ['DWG 2018 mixed','dwg','dwg/example_2018.dwg','dxf'],
+      ['SKP legacy nested','skp','skp/nesting_2017.skp','stl'],
+      ['SKP modern nested','skp','skp/nesting_2021.skp','stl'],
+      ['SKP scaled components','skp','skp/instance_scale_term_2021.skp','stl'],
+      ['SKP furniture','skp','skp/chair_and_table.skp','stl'],
+      ['empty SKP','skp','skp/blank_v17.skp','error'],
+      ['invalid SKP','skp',Buffer.from('not a SketchUp file'),'error'],
+      ['truncated SKP','skp',fs.readFileSync(path.join(fixtures,'skp/nesting_2021.skp')).subarray(0,100),'error'],
       ['invalid STEP','step',Buffer.from('not a STEP file'),'error'],
       ['invalid DWG','dwg',Buffer.from('not a DWG file'),'error'],
       ['truncated DWG','dwg',Buffer.from('AC1032'),'error'],
@@ -67,6 +74,15 @@ function stlBounds(bytes) {
         if(expected==='stl'){
           assert.equal(output.units,'millimeter');results[name]=stlBounds(bytes);
           if(name.startsWith('STEP millimeters')||name.startsWith('STEP inches'))for(const d of results[name].dimensions)assert.ok(Math.abs(d-1000)<.01);
+          if(name==='SKP legacy nested'||name==='SKP modern nested') {
+            assert.equal(results[name].triangles,6);
+            for(const [i,d] of [1270,254,0].entries())assert.ok(Math.abs(results[name].dimensions[i]-d)<.01, 'Nested SKP placement/axis mismatch');
+          }
+          if(name==='SKP furniture')assert.ok(results[name].triangles>100);
+          if(name==='SKP scaled components') {
+            assert.equal(results[name].triangles,24);
+            for(const [i,d] of [533.4,25.4,25.4].entries())assert.ok(Math.abs(results[name].dimensions[i]-d)<.01, 'SKP placement/scale/axis mismatch');
+          }
           if(name==='STP assembly')assert.ok(results[name].triangles>100,'Assembly should contain many faces');
         } else {assert.ok(bytes.toString().includes('SECTION'));assert.ok(output.notice.includes('DWG geometry preview'));results[name]={bytes:bytes.length};}
         fs.writeFileSync(path.join(outputDir,stem+'.json'),JSON.stringify({units:output.units,notice:output.notice},null,2));

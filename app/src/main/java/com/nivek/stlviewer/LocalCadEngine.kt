@@ -18,7 +18,7 @@ class LocalCadEngine(private val activity: Activity) {
     @SuppressLint("SetJavaScriptEnabled") // Only intercepted, bundled assets can execute.
     fun convert(source: File,requestedType: String): Compiled {
         val type=if(requestedType=="stp")"step" else requestedType
-        if(type !in setOf("scad","step","dwg"))throw IOException("Unsupported CAD format.")
+        if(type !in setOf("scad","step","dwg","skp"))throw IOException("Unsupported CAD format.")
         val label=type.uppercase(Locale.ROOT); val folder=if(type=="scad")"scad" else "cad"
         val prefix="/$folder/"; val inputName=if(type=="scad")"input.scad" else "input.model"
         val result=CompletableFuture<Compiled>()

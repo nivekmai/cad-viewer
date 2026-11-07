@@ -1,4 +1,14 @@
-# CAD Viewer 1.4.0 validation
+# CAD Viewer 1.5.0 validation
+
+- Added offline SketchUp importing with OpenSKP 1.5.0; reproducible browser bundle and dependency integrity hashes are pinned.
+- 20 CAD browser cases pass, including legacy 2017 and modern 2021 SketchUp containers, nested components, exact placement/scale and Z-up bounds, a chair/table model, and empty/invalid/truncated SKP rejection.
+- 64 JVM tests pass, including all thirteen converted browser models loaded through the Kotlin parsers.
+- Signed release APK verified with the existing update certificate; non-debuggable, 11,488,810 bytes.
+- 10 SCAD browser cases and nine release-automation tests pass.
+- Debug/release builds and lint pass; package versionCode 8/versionName 1.5.0. Native Android picker/WebView and gestures still require a device smoke test.
+- SketchUp previews contain surfaces only; materials, textures, loose edges, text, dimensions, and scene styles are not shown. No claim of compatibility with every SketchUp version or feature.
+
+## Previous CAD Viewer 1.4.0 validation
 
 - All ten production Android classes migrated from Java to Kotlin using AGP's built-in Kotlin support; no production `.java` files remain. Existing Java tests and desktop-only utilities remain as compatibility checks.
 - 63 original parser tests plus the Kotlin CAD integration test pass, covering all nine converted browser fixtures. Nine release-automation tests pass.
