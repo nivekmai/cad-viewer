@@ -18,9 +18,13 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const data=new Uint8Array(bytes),v=new DataView(data.buffer),vertices=v.getInt32(4,true),batches=v.getInt32(8,true);
   const xyz=[],uv=[];
   for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(16+i*20,true)/254-1,v.getFloat32(20+i*20,true)/254-1,0);uv.push(v.getFloat32(28+i*20,true),v.getFloat32(32+i*20,true));}
-  function attribute(name,values,size){const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(values),gl.STATIC_DRAW);const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(loc);}
-  attribute('aPosition',xyz,3);attribute('aUv',uv,2);
-  gl.vertexAttrib3f(gl.getAttribLocation(program,'aNormal'),0,0,1);
+  // Same interleaved position/normal/UV layout as GeometryBatch and ModelView.
+  // Tiny capacity deliberately forces multiple uploads for the fixture.
+  const capacity=3,staging=new Float32Array(capacity*8),buffer=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,capacity*32,gl.STREAM_DRAW);
+  for(const [name,size,offset] of [['aPosition',3,0],['aNormal',3,12],['aUv',2,24]]) {
+    const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,offset);gl.enableVertexAttribArray(loc);
+  }
   const identity=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
   for(const name of ['uMvp','uModel'])gl.uniformMatrix4fv(gl.getUniformLocation(program,name),false,identity);
   const uniform=(name,n)=>gl.uniform1f(gl.getUniformLocation(program,name),n);
@@ -32,7 +36,11 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   for(const param of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,param,gl.REPEAT);
   const batchOffset=16+vertices*20;
   let first=0,count=0;for(let i=0;i<batches;i++)if(v.getInt32(batchOffset+i*36+24,true)===0){first=v.getInt32(batchOffset+i*36,true);count=v.getInt32(batchOffset+i*36+4,true);}
-  function draw(){gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLES,first,count);if(gl.getError()!==gl.NO_ERROR)throw Error('GL render error');const px=new Uint8Array(256*256*4);gl.readPixels(0,0,256,256,gl.RGBA,gl.UNSIGNED_BYTE,px);return px;}
+  function draw(){gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);for(let offset=first;offset<first+count;offset+=capacity) {
+    const n=Math.min(capacity,first+count-offset);
+    for(let i=0;i<n;i++){const v=offset+i;staging.set([xyz[v*3],xyz[v*3+1],xyz[v*3+2],0,0,1,uv[v*2],uv[v*2+1]],i*8);}
+    gl.bufferSubData(gl.ARRAY_BUFFER,0,staging.subarray(0,n*8));gl.drawArrays(gl.TRIANGLES,0,n);gl.finish();
+  }if(gl.getError()!==gl.NO_ERROR)throw Error('GL render error');const px=new Uint8Array(256*256*4);gl.readPixels(0,0,256,256,gl.RGBA,gl.UNSIGNED_BYTE,px);return px;}
   const textured=draw();let red=0,white=0;
   for(let i=0;i<textured.length;i+=4){if(textured[i]>textured[i+1]*1.5&&textured[i]>textured[i+2]*1.5)red++;if(textured[i]>180&&Math.abs(textured[i]-textured[i+1])<5&&Math.abs(textured[i]-textured[i+2])<5)white++;}
   uniform('uTextured',0);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,0,0,1);const solid=draw();

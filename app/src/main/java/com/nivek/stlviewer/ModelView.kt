@@ -71,6 +71,8 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var modelLocation=0; private var unlitLocation=0
         private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
         private var whiteTexture=0
+        private var geometryBuffer=0
+        private val batch=GeometryBatch()
         private var uploadedMesh: StlParser.Mesh?=null
         private var textureIds=IntArray(0)
         private val model=FloatArray(16); private val projection=FloatArray(16); private val mvp=FloatArray(16)
@@ -87,6 +89,9 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR)
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,java.nio.ByteBuffer.allocateDirect(4).apply { putInt(-1);position(0) })
             uploadedMesh=null; textureIds=IntArray(0) // GL names cannot survive context loss.
+            val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*32,null,GLES20.GL_STREAM_DRAW)
             val vertex="uniform mat4 uMvp; uniform mat4 uModel; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=mat3(uModel)*aNormal; vUv=aUv; }"
             val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; varying vec3 vNormal; varying vec2 vUv; void main(){ if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
@@ -104,6 +109,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             if(uploadedMesh===mesh)return
             if(textureIds.isNotEmpty())GLES20.glDeleteTextures(textureIds.size,textureIds,0)
             textureIds=IntArray(mesh.textures.size)
+            CrashDiagnostics.stage("Uploading textures")
             val maxSize=IntArray(1); GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE,maxSize,0)
             for((index,bytes) in mesh.textures.withIndex()) {
                 val bitmap=TextureBitmap.decode(bytes,maxSize[0])
@@ -127,7 +133,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glUniform1f(texturedLocation,if(texture!=0)1f else 0f)
             GLES20.glUniform1f(cutoffLocation,if(surface.flags and 4!=0)surface.cutoff else 0f)
             if(surface.flags and 1!=0)GLES20.glDisable(GLES20.GL_CULL_FACE) else GLES20.glEnable(GLES20.GL_CULL_FACE)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLES,surface.first,surface.count)
+
         }
         private fun depth(surface: CadMeshParser.Surface,mesh: StlParser.Mesh): Float {
             val i=surface.first*6
@@ -158,6 +164,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             val mesh=mesh ?: return
             uploadTextures(mesh)
+            CrashDiagnostics.stage("Streaming geometry to GPU")
             val extent=verticalExtent()
             Matrix.orthoM(projection,0,-extent*aspect,extent*aspect,-extent,extent,-20f,20f)
             Matrix.setIdentityM(model,0); Matrix.translateM(model,0,panX,panY,0f)
@@ -172,27 +179,55 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glUniform4f(colorLocation,.36f,.82f,.71f,1f)
             if(mesh.triangles>0) {
                 GLES20.glUniform1f(unlitLocation,0f)
-                mesh.data.position(0); GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,24,mesh.data)
-                mesh.data.position(3); GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,24,mesh.data)
-                GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal)
-                if(mesh.surfaces.isEmpty())GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,mesh.triangles*3)
+                if(mesh.surfaces.isEmpty())stream(mesh,null,mesh.triangles*3)
                 else {
-                    mesh.textureCoordinates?.let { uv ->
-                        uv.position(mesh.textureOffset); GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,mesh.textureStride,uv); GLES20.glEnableVertexAttribArray(uvLocation)
-                    }
-                    for(surface in mesh.surfaces)if(surface.flags and 2==0)drawSurface(surface)
+                    stream(mesh,mesh.surfaces.filter { it.flags and 2==0 })
                     GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)
-                    for(surface in mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) })drawSurface(surface)
+                    stream(mesh,mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) })
                     GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
-                    GLES20.glDisableVertexAttribArray(uvLocation)
                 }
             }
             if(mesh.segments>0) {
-                GLES20.glUniform1f(unlitLocation,1f); GLES20.glDisableVertexAttribArray(normal)
-                GLES20.glVertexAttrib3f(normal,0f,0f,1f); mesh.lines.position(0)
-                GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,12,mesh.lines)
-                GLES20.glEnableVertexAttribArray(position); GLES20.glDrawArrays(GLES20.GL_LINES,0,mesh.segments*2)
+                GLES20.glUniform1f(unlitLocation,1f)
+                stream(mesh,null,mesh.segments*2,true)
             }
+            CrashDiagnostics.stage("Frame complete")
+        }
+        private fun stream(mesh: StlParser.Mesh,surfaces: List<CadMeshParser.Surface>?,count: Int=0,lines: Boolean=false) {
+            batch.clear()
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
+            GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal); GLES20.glEnableVertexAttribArray(uvLocation)
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,32,0)
+            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,32,12)
+            GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,32,24)
+            fun flush() {
+                if(batch.size==0)return
+                val bytes=batch.size*32
+                batch.data.flip()
+                GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER,0,bytes,batch.data)
+                for(draw in batch.draws) {
+                    draw.surface?.let { drawSurface(it) }
+                    GLES20.glDrawArrays(if(lines)GLES20.GL_LINES else GLES20.GL_TRIANGLES,draw.first,draw.count)
+                }
+                // Finish before reusing storage: drivers cannot accumulate model-sized
+                // copies or renamed buffers behind thousands of asynchronous draws.
+                GLES20.glFinish()
+                check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not render this geometry batch." }
+                batch.clear()
+            }
+            fun append(first: Int,total: Int,surface: CadMeshParser.Surface?) {
+                var offset=first; var remaining=total
+                while(remaining>0) {
+                    val n=minOf(remaining,batch.capacity-batch.size)
+                    batch.append(mesh,offset,n,surface,lines)
+                    offset+=n; remaining-=n
+                    if(batch.size==batch.capacity)flush()
+                }
+            }
+            if(surfaces==null)append(0,count,null)
+            else for(surface in surfaces)append(surface.first,surface.count,surface)
+            flush()
+
         }
     }
 }

@@ -47,6 +47,7 @@ jobs:
         run: |
           npm ci --prefix tools
           node tools/test-skp-memory.cjs
+          node tools/test-cad-host.cjs
           node tools/bundle-skp.cjs
           git diff --exit-code -- app/src/main/assets/cad/openskp.js
           npx --prefix tools playwright install --with-deps chromium

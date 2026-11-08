@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.4
+
+- Stream geometry through one reusable GPU buffer in bounded batches, completing each upload batch before reusing it. Avoid model-sized client-array submissions and unbounded queued geometry copies.
+- Terminate CAD workers before completion callbacks and wait for converter WebView disposal before preparing native geometry.
+- Preserve all surfaces, materials, UVs and lines; no model size or triangle limits added. Diagnostic stages now distinguish texture upload, GPU streaming and completed frames.
+
 ## 1.6.3
 
 - Reduced SketchUp import memory by replacing the reader's dense edge-ID flag table with storage for actual edges only. Geometry and textures are unchanged; no file or triangle limits added.

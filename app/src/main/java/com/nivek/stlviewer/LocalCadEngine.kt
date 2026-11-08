@@ -70,11 +70,17 @@ class LocalCadEngine(private val activity: Activity) {
           catch(e: ExecutionException) { throw IOException(e.cause?.message,e.cause) }
         finally {
             result.cancel(false); bridge.close()
+            val disposed=CompletableFuture<Unit>()
             activity.runOnUiThread {
-                web?.let { view ->
-                    view.removeJavascriptInterface("Compiler"); (view.parent as? ViewGroup)?.removeView(view); view.destroy()
-                }
+                try {
+                    web?.let { view ->
+                        view.removeJavascriptInterface("Compiler"); (view.parent as? ViewGroup)?.removeView(view); view.destroy()
+                    }
+                } finally { disposed.complete(Unit) }
             }
+            // Do not allocate native render geometry while the converter view is still live.
+            if(success)try { disposed.get(10,TimeUnit.SECONDS) }
+            catch(error: Exception) { output.delete(); throw IOException("Could not close the CAD reader cleanly.",error) }
             if(!success)output.delete()
         }
     }

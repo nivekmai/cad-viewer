@@ -1,4 +1,14 @@
-# CAD Viewer 1.6.3 validation
+# CAD Viewer 1.6.4 validation
+
+- User-provided Android exit history confirmed low-memory termination in v1.6.3 at the Rendering model stage, with a WebView renderer low-memory exit two seconds earlier. Sampled RSS values are not peak memory measurements.
+- Replaced full-model GLES client arrays with a reusable 32,766-vertex interleaved VBO (1,048,512 bytes) and matching CPU staging buffer. Each batch preserves material draw ranges, UVs, normals, opaque/blended ordering, and lines; glFinish completes the batch before storage reuse. GPU/CPU staging sizes do not bound total model size, textures, mapped pages, or driver overhead.
+- Ran every surface in the private model through the production staging helper: all 9,034,545 expanded vertices / 3,011,515 triangles preserved, checking positions/normals/UVs at each chunk boundary. Added tests for high source offsets, multiple material ranges, full-batch/tail reuse, and lines.
+- Exact application shaders passed WebGL checker/material/transparency pixel tests using a deliberately tiny reusable interleaved GPU buffer to force multiple uploads. This is not a physical Android GPU validation.
+- CAD workers terminate before native completion/error callbacks. Native loading waits for converter WebView destruction before creating render geometry; this confirms disposal ordering, not immediate OS renderer-process reclamation. Worker lifecycle tests cover streamed and monolithic results, acknowledgments and error paths.
+- 80 Android/JVM tests passed including private model/texture tests, all 21 public CAD browser cases passed, and release build/lint passed. Signed versionCode 16 / versionName 1.6.4 uses the existing update certificate.
+- Phone-specific total memory and interaction performance remain unverified. Synchronous bounded uploads may trade frame rate for lower transient GPU memory. No file/triangle cutoff or content reduction was introduced.
+
+## Previous CAD Viewer 1.6.3 validation
 
 - Traced large allocations in OpenSKP 1.5.0 to dense edge-flag arrays spanning unused IDs. The private model repeatedly allocated arrays of 20–110 MB for these ranges.
 - Replaced that table at bundle time with sparse 256-entry Uint16 pages, with zero reserved for absent entries. Tests compare old/new flags, membership and size over 20,000 writes and cover descending IDs, zero flags, byte masking, and widely separated IDs up to 0xffffffff. A hash guard rejects unexpected upstream source changes.
