@@ -115,6 +115,28 @@ class SectionClipTest {
         assertNull(SectionClip.pick(mesh, floatArrayOf(0.9f, 0.9f, 5f), floatArrayOf(0f, 0f, -1f)))
     }
 
+    @Test fun pickDoesNotReadPastStaticBufferWhenBakedCountIsLarger() {
+        // Regression: for CVM2, mesh.triangles is the baked count (static
+        // + every instance placement) while mesh.data holds only the static
+        // vertices. Picking by mesh.triangles read past the buffer and
+        // crashed with BufferUnderflowException. A prepared mesh with a
+        // 1-triangle static buffer and a 3-triangle baked count reproduces
+        // that shape.
+        val static = buffer(
+            -1f,-1f,0f, 0f,0f,1f,
+            1f,-1f,0f, 0f,0f,1f,
+            -1f,1f,0f, 0f,0f,1f
+        )
+        val mesh = StlParser.Mesh(FloatArray(0), 27, prepared = StlParser.Prepared(static, doubleArrayOf(2.0, 2.0, 0.0)))
+        assertEquals(3, mesh.triangles)
+        assertEquals(18, mesh.data.capacity())
+        val hit = SectionClip.pick(mesh, floatArrayOf(-0.5f, -0.5f, 5f), floatArrayOf(0f, 0f, -1f))
+        assertNotNull(hit)
+        assertArrayEquals(floatArrayOf(-0.5f, -0.5f, 0f), hit!!.point, 1e-5f)
+        assertArrayEquals(floatArrayOf(0f, 0f, 1f), hit.normal, 1e-5f)
+        assertEquals(5f, hit.distance, 1e-5f)
+    }
+
     @Test fun pickFindsInstancedTriangleTheStaticGeometryMisses() {
         val mesh = triangleMesh()
         // Resource triangle covering (0.9, 0.9), where the static triangle

@@ -52,7 +52,9 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         val w=width.toFloat(); val h=height.toFloat()
         if(w<=0f || h<=0f)return
         queueEvent {
-            val result=synchronized(scene) { scene.pick(x,y,w,h) }
+            // A pick failure must never take the GL thread (and the app)
+            // down with it; report it as no face picked instead.
+            val result=try { synchronized(scene) { scene.pick(x,y,w,h) } } catch(_: RuntimeException) { null }
             post { onSectionPicked?.invoke(result?.first,result?.second ?: 0f,result?.third ?: 0f) }
         }
     }

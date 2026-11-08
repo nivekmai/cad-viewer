@@ -87,8 +87,14 @@ object SectionClip {
     fun pick(mesh: StlParser.Mesh, origin: FloatArray, dir: FloatArray): Pick? {
         var best: Pick? = null
         var bestT = Float.MAX_VALUE
-        if (mesh.triangles > 0) {
-            pickBuffer(mesh.data, 0, mesh.triangles * 3, null, origin, dir, bestT)?.let {
+        // Static geometry: mesh.data holds only the static vertices.
+        // mesh.triangles is the baked count (static + every instance
+        // placement) for CVM2, so it overstates the static buffer and
+        // reading that many vertices runs past the end of it. The buffer
+        // capacity is the static vertex count for every format.
+        val staticVertices = mesh.data.capacity() / 6
+        if (staticVertices >= 3) {
+            pickBuffer(mesh.data, 0, staticVertices, null, origin, dir, bestT)?.let {
                 best = it; bestT = it.distance
             }
         }

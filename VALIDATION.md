@@ -1,4 +1,10 @@
-# CAD Viewer 1.6.5 validation
+# CAD Viewer 1.7.0 validation
+
+- Cross-section analysis: Section button in the footer, tap a face to place the cut plane, slider moves the plane, Done dismisses without reloading. The pick ray-casts the real triangles (static and instanced) and the cut is a clip plane in the fragment shader, so it works for both the streaming and instanced render paths. New SectionClipTest covers the ray/triangle test, normal-matrix math, plane range, static and instanced picking, and the CVM2 buffer regression below: 14 tests, all passing.
+- Fixed a crash on starting a section on an instanced (CVM2) model: face picking read the baked triangle count (static + every instance placement) from the static buffer, which only holds the static vertices, and ran past the end of it (BufferUnderflowException on the GL thread). Picking now sizes the static scan from the buffer capacity, and a pick failure is reported as no face picked instead of taking the render thread down.
+- Phone-specific behavior remains unverified on a device: the pick and clip were verified by unit tests and a successful build, not by tapping a face on a phone.
+
+## Previous CAD Viewer 1.6.5 validation
 
 - SketchUp models now keep repeated components instanced (CVM2 format; CVM1 kept as fallback). For the private 3.0M-triangle test house, measured in Node with the bundled OpenSKP 1.5.0: 898,982 unique triangles instead of 3,011,515 baked, 326 instanced placements plus 292 static surfaces instead of 16,662 draw batches, 152.7 MB of converted output instead of 227.3 MB, and converter build time 64.4 s instead of 94.7 s. Triangle conservation and world bounds verified against the baked scene for the house and all public fixtures.
 - Geometry is uploaded to persistent GPU buffers once per model instead of re-streamed through a 1 MiB buffer on every frame. Rotating the house previously re-uploaded about 289 MB per frame in 281 batches with a glFinish after each one; frames now only set a matrix uniform and issue draw calls.

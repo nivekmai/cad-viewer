@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+
+- Cross-section analysis: tap Section in the footer, then tap a face to place the cut plane. A slider moves the plane through the model and hides everything on the far side; Done (or Section again) dismisses it without reloading the model. Tapping another face while the panel is open re-places the plane. The plane lives in model space, so it stays attached to the model when you rotate it, and it works for both the streaming and instanced render paths.
+- Fixed a crash when starting a section on an instanced (CVM2) model: face picking read the baked triangle count from the static buffer, which only holds the static vertices, and ran past the end of it. Picking now sizes the static scan from the buffer itself, and a pick failure can no longer take the render thread down.
+
 ## 1.6.5
 
 - SketchUp models now keep repeated components instanced instead of baking every placement into one triangle soup (new CVM2 mesh format; CVM1 kept as fallback). For the 3.0M-triangle test house: 898,982 unique triangles instead of 3,011,515, 326 instanced placements plus 292 static surfaces instead of 16,662 draw batches, and 152.7 MB of converted output instead of 227.3 MB.
