@@ -16,6 +16,10 @@ Use **⋮ → Show all files** if a provider mislabels your model. The Android *
 
 **Browse folder** is a fallback: grant access to a model folder and the app lists matching filenames itself, including subfolders. Android may prevent selecting the entire Downloads root; choose the subfolder containing your models. STEP (`.step`/`.stp`) DWG, and SketchUp (`.skp`) are included in both the picker filters and folder browser. This browser filters by filename extension, not MIME type. Files can also be opened/shared from another app.
 
+## Section analysis
+
+Tap **Section**, then tap a face to place a cut. Move the slider to position it. **Flip** switches which side remains visible while keeping the cut in place; tap it again to switch back. **Done** restores the whole model.
+
 ## Supported content
 
 | Format | What is displayed |

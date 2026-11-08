@@ -31,6 +31,7 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   }
   const identity=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
   gl.uniformMatrix4fv(gl.getUniformLocation(program,'uMvp'),false,identity);
+  gl.uniformMatrix4fv(gl.getUniformLocation(program,'uLocal'),false,identity);
   gl.uniformMatrix3fv(gl.getUniformLocation(program,'uNormalMatrix'),false,new Float32Array([1,0,0,0,1,0,0,0,1]));
   const uniform=(name,n)=>gl.uniform1f(gl.getUniformLocation(program,name),n);
   uniform('uUnlit',0);uniform('uTextured',1);uniform('uCutoff',.5);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);
@@ -56,11 +57,24 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,0,0,128]));
   uniform('uCutoff',0);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
   const translucent=draw();const alphaColor=Array.from(translucent.slice(center,center+4));
-  return {red,white,solidColor,alphaColor};
+  // A cut away from the origin must keep the same position when flipped.
+  gl.disable(gl.BLEND);uniform('uTextured',0);uniform('uClipEnabled',1);uniform('uClipSign',1);
+  gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,0,0,1);
+  gl.uniform4f(gl.getUniformLocation(program,'uClipPlane'),1,0,0,-.25);
+  const original=draw();uniform('uClipSign',-1);const flipped=draw();
+  const sample=(pixels,x)=>pixels[(128*256+x)*4];
+  const clipPixels=[sample(original,64),sample(original,192),sample(flipped,64),sample(flipped,192)];
+  gl.uniform4f(gl.getUniformLocation(program,'uClipPlane'),1,0,0,-.75);
+  const moved=draw();const movedPixels=[sample(moved,192),sample(moved,248)];
+  gl.uniform4f(gl.getUniformLocation(program,'uClipPlane'),1,0,0,-.25);uniform('uClipSign',1);
+  const restored=draw();const twiceRestores=restored.every((n,i)=>n===original[i]);
+  return {red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
  },{vertex,fragment,bytes:Array.from(bytes)});
  assert.ok(result.red>100&&result.white>100,JSON.stringify(result));
  assert.ok(result.solidColor[0]>100&&result.solidColor[1]===0&&result.solidColor[2]===0);
  assert.ok(Math.abs(result.alphaColor[0]-result.solidColor[0]*128/255)<3,JSON.stringify(result));
+ assert.ok(result.clipPixels[0]>100 && result.clipPixels[1]===0 && result.clipPixels[2]===0 && result.clipPixels[3]>100,JSON.stringify(result));
+ assert.ok(result.movedPixels[0]===0 && result.movedPixels[1]>100 && result.twiceRestores,JSON.stringify(result));
  fs.mkdirSync(path.join(root,'build/cad-test'),{recursive:true});await page.screenshot({path:path.join(root,'build/cad-test/textured-skp.png')});
  console.log('PASS SketchUp texture pixels and material-color shader',result);
  }finally{await browser.close();}

@@ -32,7 +32,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             }
         })
     }
-    fun show(mesh: StlParser.Mesh) { queueEvent { scene.mesh=mesh; scene.clipEnabled=false; scene.reset() }; requestRender() }
+    fun show(mesh: StlParser.Mesh) { queueEvent { scene.mesh=mesh; scene.clipEnabled=false; scene.clipSign=1f; scene.reset() }; requestRender() }
     fun reset() { queueEvent(scene::reset); requestRender() }
     // Cross-section analysis. Arming makes the next single tap pick a face
     // instead of doing nothing; the picked face places the cut plane, and
@@ -44,9 +44,12 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
     fun setSectionOffset(offset: Float) {
         queueEvent { synchronized(scene) { if(scene.clipEnabled)scene.clipPlane[3]=-offset } }; requestRender()
     }
+    fun flipSection() {
+        queueEvent { synchronized(scene) { if(scene.clipEnabled)scene.clipSign=-scene.clipSign } }; requestRender()
+    }
     fun clearSection() {
         sectionPicking=false
-        queueEvent { synchronized(scene) { scene.clipEnabled=false } }; requestRender()
+        queueEvent { synchronized(scene) { scene.clipEnabled=false; scene.clipSign=1f } }; requestRender()
     }
     private fun pickAt(x: Float,y: Float) {
         val w=width.toFloat(); val h=height.toFloat()
@@ -99,11 +102,12 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         var pitch=-62f; var yaw=-28f; var panX=0f; var panY=0f; var zoom=1f; var aspect=1f
         // Section clip plane, in model space: keep fragments where
         // dot(position, normal) <= offset. clipPlane stores (nx, ny, nz, -offset).
+        var clipSign=1f
         var clipEnabled=false
         var clipPlane=FloatArray(4)
         private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var normalMatrixLocation=0; private var unlitLocation=0
         private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
-        private var localLocation=0; private var clipPlaneLocation=0; private var clipEnabledLocation=0
+        private var localLocation=0; private var clipPlaneLocation=0; private var clipEnabledLocation=0; private var clipSignLocation=0
         private val identity=FloatArray(16).apply { Matrix.setIdentityM(this,0) }
         private var whiteTexture=0
         private var geometryBuffer=0
@@ -132,7 +136,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
             GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*32,null,GLES20.GL_STREAM_DRAW)
             val vertex="uniform mat4 uMvp; uniform mat4 uLocal; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=uNormalMatrix*aNormal; vUv=aUv; vModelPos=(uLocal*vec4(aPosition,1.0)).xyz; }"
-            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && dot(vModelPos,uClipPlane.xyz)+uClipPlane.w>0.0)discard; if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
+            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform float uClipSign; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && (dot(vModelPos,uClipPlane.xyz)+uClipPlane.w)*uClipSign>0.0)discard; if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
             program=GLES20.glCreateProgram()
             GLES20.glAttachShader(program,vs); GLES20.glAttachShader(program,fs); GLES20.glLinkProgram(program)
@@ -143,7 +147,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             uvLocation=GLES20.glGetAttribLocation(program,"aUv"); colorLocation=GLES20.glGetUniformLocation(program,"uColor")
             texturedLocation=GLES20.glGetUniformLocation(program,"uTextured"); samplerLocation=GLES20.glGetUniformLocation(program,"uTexture"); cutoffLocation=GLES20.glGetUniformLocation(program,"uCutoff")
             mvpLocation=GLES20.glGetUniformLocation(program,"uMvp"); normalMatrixLocation=GLES20.glGetUniformLocation(program,"uNormalMatrix"); unlitLocation=GLES20.glGetUniformLocation(program,"uUnlit")
-            localLocation=GLES20.glGetUniformLocation(program,"uLocal"); clipPlaneLocation=GLES20.glGetUniformLocation(program,"uClipPlane"); clipEnabledLocation=GLES20.glGetUniformLocation(program,"uClipEnabled")
+            localLocation=GLES20.glGetUniformLocation(program,"uLocal"); clipPlaneLocation=GLES20.glGetUniformLocation(program,"uClipPlane"); clipEnabledLocation=GLES20.glGetUniformLocation(program,"uClipEnabled"); clipSignLocation=GLES20.glGetUniformLocation(program,"uClipSign")
         }
         private fun uploadTextures(mesh: StlParser.Mesh) {
             if(uploadedMesh===mesh)return
@@ -327,6 +331,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             val hit=SectionClip.pick(mesh,floatArrayOf(eye[0],eye[1],eye[2]),dir) ?: return Triple(null,0f,0f)
             val n=hit.normal
             val offset=n[0]*hit.point[0]+n[1]*hit.point[1]+n[2]*hit.point[2]
+            clipSign=1f
             clipPlane[0]=n[0]; clipPlane[1]=n[1]; clipPlane[2]=n[2]; clipPlane[3]=-offset
             clipEnabled=true
             val range=SectionClip.planeRange(SectionClip.modelHalfExtents(mesh),n)
@@ -365,6 +370,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glUseProgram(program)
             GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
             GLES20.glUniform1f(clipEnabledLocation,if(clipEnabled)1f else 0f)
+            GLES20.glUniform1f(clipSignLocation,clipSign)
             GLES20.glUniform4fv(clipPlaneLocation,1,clipPlane,0)
             GLES20.glUniformMatrix4fv(localLocation,1,false,identity,0)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glUniform1i(samplerLocation,0)

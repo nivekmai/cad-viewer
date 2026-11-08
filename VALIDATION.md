@@ -1,4 +1,10 @@
-# CAD Viewer 1.7.0 validation
+# CAD Viewer 1.7.1 validation
+
+- Added a Flip control to the active section panel. A separate clip sign reverses the retained half-space; the original plane normal, offset, and slider range remain unchanged. Clear, model replacement, and a new face pick reset the sign.
+- Actual application GLSL passed WebGL pixel tests for an offset cut, opposite retained halves, moving the cut after flipping, and exact restoration after two flips. Existing texture, material, and alpha tests also passed. Shared clip uniforms apply to static and instanced paths.
+- Android release build, lint, and JVM tests passed (95 passing, two optional private-file tests skipped). Physical phone UI interaction remains unverified.
+
+## Previous CAD Viewer 1.7.0 validation
 
 - Cross-section analysis: Section button in the footer, tap a face to place the cut plane, slider moves the plane, Done dismisses without reloading. The pick ray-casts the real triangles (static and instanced) and the cut is a clip plane in the fragment shader, so it works for both the streaming and instanced render paths. New SectionClipTest covers the ray/triangle test, normal-matrix math, plane range, static and instanced picking, and the CVM2 buffer regression below: 14 tests, all passing.
 - Fixed a crash on starting a section on an instanced (CVM2) model: face picking read the baked triangle count (static + every instance placement) from the static buffer, which only holds the static vertices, and ran past the end of it (BufferUnderflowException on the GL thread). Picking now sizes the static scan from the buffer capacity, and a pick failure is reported as no face picked instead of taking the render thread down.

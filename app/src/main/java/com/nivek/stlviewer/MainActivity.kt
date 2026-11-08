@@ -119,6 +119,10 @@ class MainActivity : Activity() {
             })
         }
         sectionPanel.addView(sectionSeek,LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(12); marginEnd=dp(12) })
+        sectionPanel.addView(button("Flip",false).apply {
+            contentDescription="Flip visible side of section"
+            setOnClickListener { if(sectionState==SectionState.ACTIVE)model.flipSection() }
+        },LinearLayout.LayoutParams(-2,dp(44)))
         sectionPanel.addView(button("Done",false).apply { setOnClickListener { endSection() } },LinearLayout.LayoutParams(-2,dp(44)))
         viewport.addView(sectionPanel,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM).apply { marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(12) })
         empty=column().apply { gravity=Gravity.CENTER; setPadding(dp(28),0,dp(28),0) }

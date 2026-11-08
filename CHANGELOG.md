@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+
+- Added Flip beside the section slider to switch the visible half of the model without moving the cut plane or reloading geometry.
+- The slider keeps its position and direction after flipping; new sections start on the original side.
+
 ## 1.7.0
 
 - Cross-section analysis: tap Section in the footer, then tap a face to place the cut plane. A slider moves the plane through the model and hides everything on the far side; Done (or Section again) dismisses it without reloading the model. Tapping another face while the panel is open re-places the plane. The plane lives in model space, so it stays attached to the model when you rotate it, and it works for both the streaming and instanced render paths.
