@@ -1,4 +1,15 @@
-# CAD Viewer 1.6.0 validation
+# CAD Viewer 1.6.1 validation
+
+- Tested the user-provided private SketchUp model: 66,701,742-byte input, 3,011,515 rendered triangles, 129 embedded textures. Private input/output are excluded from Git and release sources.
+- Reproduced the old native parser failure under a 128 MiB heap/direct-buffer test configuration: failed to reserve a 216,829,080-byte render buffer after allocating 72,276,360 UV bytes.
+- The revised disk-backed parser loaded the same complete converted model successfully under the identical JVM memory configuration. This does not imply total process RSS is below 128 MiB; mapped pages and GPU textures use memory outside that budget.
+- Removed the coordinate heap array and copied UV/image buffers from the textured parser. Mapped file storage remains valid after source unlinking and is released with the model.
+- Worker output uses acknowledged chunks to avoid a model-sized output allocation and unbounded queued messages; removed an unnecessary copy of the SKP input.
+- The actual private SKP also passed the browser worker/bridge import: all 3,011,515 triangles, 129 images, and 9,821 textured batches transferred successfully.
+- 71 JVM tests, 21 public CAD browser cases, and the texture shader check pass. Release build/lint pass; signed 1.6.1 APK verified with the existing certificate.
+- Actual Android WebView/GPU memory behavior still requires device confirmation.
+
+## Previous CAD Viewer 1.6.0 validation
 
 - Replaced SketchUp-to-STL transfer with an internal binary mesh carrying UVs, material batches, alpha modes, front/back sides, and embedded PNG/JPEG images.
 - 71 JVM tests pass, including six new mesh-transfer validation tests and fourteen real converted CAD inputs.

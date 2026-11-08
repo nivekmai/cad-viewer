@@ -7,8 +7,10 @@ import kotlin.math.sqrt
 /** Binary STL is detected by its length rather than the ambiguous "solid" prefix. */
 object StlParser {
 
+    data class Prepared(val data: FloatBuffer, val dimensions: DoubleArray)
+
     class Mesh @JvmOverloads @Throws(IOException::class) constructor(
-        points: FloatArray, count: Int, edges: FloatArray = FloatArray(0), edgeCount: Int = 0
+        points: FloatArray, count: Int, edges: FloatArray = FloatArray(0), edgeCount: Int = 0, prepared: Prepared? = null
     ) {
         @JvmField val data: FloatBuffer
         @JvmField val lines: FloatBuffer
@@ -16,13 +18,19 @@ object StlParser {
         @JvmField val segments = edgeCount / 6
         var textureCoordinates: FloatBuffer? = null
         var surfaces: List<CadMeshParser.Surface> = emptyList()
-        var textures: List<ByteArray> = emptyList()
+        var textures: List<ByteBuffer> = emptyList()
+        var textureStride = 8
+        var textureOffset = 0
         @JvmField var units = "units"
         @JvmField var notice = ""
         @JvmField val width: Double
         @JvmField val depth: Double
         @JvmField val height: Double
         init {
+            if(prepared!=null) {
+                data=prepared.data;lines=ByteBuffer.allocateDirect(0).asFloatBuffer()
+                width=prepared.dimensions[0];depth=prepared.dimensions[1];height=prepared.dimensions[2]
+            } else {
             if (count == 0 && edgeCount == 0 || count % 9 != 0 || edgeCount % 6 != 0) throw IOException("No viewable geometry in this file.")
             if (count.toLong()*8 > Int.MAX_VALUE || edgeCount.toLong()*4 > Int.MAX_VALUE)
                 throw IOException("Geometry exceeds the runtime buffer capacity.")
@@ -52,6 +60,7 @@ object StlParser {
             lines = ByteBuffer.allocateDirect(edgeCount*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
             for (i in 0 until edgeCount) lines.put(((edges[i]-(min[i%3]+max[i%3])/2)*2/span).toFloat())
             lines.position(0)
+            }
         }
     }
     @JvmStatic @Throws(IOException::class)

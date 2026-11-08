@@ -49,7 +49,9 @@ function stlBounds(bytes) {
   const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   try {
     const cases=process.env.CAD_TEST_FILE ? [
-      ['Local DWG','dwg',fs.readFileSync(process.env.CAD_TEST_FILE),'dxf']
+      [process.env.CAD_TEST_FILE.toLowerCase().endsWith('.skp')?'Local SKP':'Local DWG',
+        process.env.CAD_TEST_FILE.toLowerCase().endsWith('.skp')?'skp':'dwg',fs.readFileSync(process.env.CAD_TEST_FILE),
+        process.env.CAD_TEST_FILE.toLowerCase().endsWith('.skp')?'cadmesh':'dxf']
     ] : [
       ['STEP millimeters','step','step/cube-mm.step','stl'],
       ['STEP inches','step','step/cube-in.step','stl'],

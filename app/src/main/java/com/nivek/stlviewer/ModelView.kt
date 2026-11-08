@@ -109,11 +109,11 @@ class ModelView(context: Context) : GLSurfaceView(context) {
             val maxSize=IntArray(1); GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE,maxSize,0)
             for((index,bytes) in mesh.textures.withIndex()) {
                 val options=BitmapFactory.Options().apply { inJustDecodeBounds=true }
-                BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)
+                CadMeshParser.textureStream(bytes).use { BitmapFactory.decodeStream(it,null,options) }
                 options.inSampleSize=1
                 while(options.outWidth/options.inSampleSize>maxSize[0] || options.outHeight/options.inSampleSize>maxSize[0])options.inSampleSize*=2
                 options.inJustDecodeBounds=false; options.inScaled=false; options.inPremultiplied=false
-                val decoded=BitmapFactory.decodeByteArray(bytes,0,bytes.size,options) ?: continue
+                val decoded=CadMeshParser.textureStream(bytes).use { BitmapFactory.decodeStream(it,null,options) } ?: continue
                 // GLES 2 requires power-of-two dimensions for seamless repeating textures.
                 fun supportedSize(size: Int): Int {
                     var value=1
@@ -179,7 +179,7 @@ class ModelView(context: Context) : GLSurfaceView(context) {
                 if(mesh.surfaces.isEmpty())GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,mesh.triangles*3)
                 else {
                     mesh.textureCoordinates?.let { uv ->
-                        uv.position(0); GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,8,uv); GLES20.glEnableVertexAttribArray(uvLocation)
+                        uv.position(mesh.textureOffset); GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,mesh.textureStride,uv); GLES20.glEnableVertexAttribArray(uvLocation)
                     }
                     for(surface in mesh.surfaces)if(surface.flags and 2==0)drawSurface(surface)
                     GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)

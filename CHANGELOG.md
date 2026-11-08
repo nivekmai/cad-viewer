@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1
+
+- Fixed high peak memory use for large textured SketchUp models by memory-mapping geometry/UVs/encoded images and generating render buffers on disk.
+- Decode textures from mapped streams and send CAD output in acknowledged chunks, avoiding model-sized transfer copies.
+- Preserved all geometry and texture content; no file-size or triangle cutoff was reintroduced.
+
 ## 1.6.0
 
 - Preserved SketchUp material colors, embedded PNG/JPEG textures, UV coordinates, and front/back materials through import and OpenGL rendering.

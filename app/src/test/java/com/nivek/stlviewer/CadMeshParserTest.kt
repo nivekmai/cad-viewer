@@ -24,9 +24,9 @@ class CadMeshParserTest {
         val mesh=read(fixture())
         assertEquals(1,mesh.triangles);assertEquals(2.0,mesh.width,0.0)
         assertEquals(-1f,mesh.data.get(0),0f)
-        val uv=FloatArray(6);mesh.textureCoordinates!!.get(uv)
+        val uv=FloatArray(6){i->mesh.textureCoordinates!!.get(i/2*5+3+i%2)}
         assertArrayEquals(floatArrayOf(0f,0f,2f,0f,0f,2f),uv,0f)
-        assertArrayEquals(byteArrayOf(1,2,3),mesh.textures.single())
+        assertArrayEquals(byteArrayOf(1,2,3),CadMeshParser.textureStream(mesh.textures.single()).readBytes())
         assertEquals(0,mesh.surfaces.single().texture)
         assertEquals(4,mesh.surfaces.single().flags)
         assertArrayEquals(floatArrayOf(1f,.5f,.25f,1f),mesh.surfaces.single().color,0f)

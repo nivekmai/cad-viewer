@@ -17,8 +17,8 @@ class CadIntegrationTest {
             assertTrue("Missing browser output: $name",file.isFile)
             val mesh=ModelParser.read(file,name)
             if(name=="SKP_textured.cadmesh") {
-                assertTrue("Texture bytes lost",mesh.textures.single().size>0)
-                assertTrue("UVs lost",mesh.textureCoordinates!!.limit()==mesh.triangles*6)
+                assertTrue("Texture bytes lost",mesh.textures.single().remaining()>0)
+                assertTrue("UVs lost",mesh.textureCoordinates!!.limit()==mesh.triangles*15)
                 assertTrue("Texture material lost",mesh.surfaces.any { it.texture==0 })
             }
             assertTrue("Empty converted model: $name",mesh.triangles+mesh.segments>0)

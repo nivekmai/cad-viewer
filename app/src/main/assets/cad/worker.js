@@ -84,7 +84,7 @@ async function readSkp(input) {
   const warnings = [];
   let scene;
   try {
-    scene = OpenSkp.buildScene(input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength), {
+    scene = OpenSkp.buildScene(input.buffer, {
       frontSideOnly: false, respectEdgeVisibility: true,
       onLog(level, message) { if (level !== 'debug' && level !== 'info' && warnings.length < 10) warnings.push(String(message)); }
     });
@@ -92,18 +92,27 @@ async function readSkp(input) {
     throw new Error('This SketchUp file could not be read. Its version or features may not be supported, or it may be damaged. ' + String(error.message || error).slice(0, 300));
   }
   importScripts('skp-mesh.js');
-  const bytes=encodeSkpScene(scene);
-  return {bytes, format: 'cadmesh', units: 'millimeter',
+  const chunks=skpSceneChunks(scene);
+  return {chunks, format: 'cadmesh', units: 'millimeter',
     notice: 'SketchUp materials and embedded PNG/JPEG textures. Projected textures may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some file versions and features may be unsupported.' +
       (warnings.length ? '\nReader notes: ' + warnings.join('\n') : '')};
 }
 
+let chunkAcknowledged;
 self.onmessage = async event => {
+  if(event.data.ack){chunkAcknowledged?.();return;}
   try {
     const input = await readBytes('input.model');
     const type = event.data.type;
     if (!['step', 'stp', 'dwg', 'skp'].includes(type)) throw new Error('Unsupported CAD format.');
     const result = type === 'skp' ? await readSkp(input) : type === 'dwg' ? await readDwg(input) : await readStep(input);
-    self.postMessage(result, [result.bytes.buffer]);
+    if(result.chunks) {
+      for(const chunk of result.chunks) {
+        const delivered=new Promise(resolve=>{chunkAcknowledged=resolve;});
+        self.postMessage({chunk},[chunk.buffer]);await delivered;
+      }
+      chunkAcknowledged=null;
+      self.postMessage({format:result.format,units:result.units,notice:result.notice,done:true});
+    } else self.postMessage(result, [result.bytes.buffer]);
   } catch (error) { self.postMessage({error: String(error.message || error)}); }
 };
