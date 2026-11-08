@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2
+
+- Fixed a crash when resizing transparent SketchUp textures by using Android-compatible premultiplied bitmaps and compensating in the texture shader.
+- Report texture upload/render exceptions and memory failures in the app instead of leaving them unhandled on the render thread.
+- Added native Android bitmap regression tests and a translucent shader blending check. No file or triangle limits were added.
+
 ## 1.6.1
 
 - Fixed high peak memory use for large textured SketchUp models by memory-mapping geometry/UVs/encoded images and generating render buffers on disk.

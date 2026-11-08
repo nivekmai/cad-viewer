@@ -81,7 +81,7 @@ class MainActivity : Activity() {
         name=text("A simple space for your 3D models",14,MUTED).apply { setSingleLine(true); ellipsize=android.text.TextUtils.TruncateAt.END }
         headerLayout.addView(name); root.addView(headerLayout)
         val viewport=FrameLayout(this)
-        model=ModelView(this); viewport.addView(model)
+        model=ModelView(this) { message -> if(!isDestroyed)showError(message) }; viewport.addView(model)
         empty=column().apply { gravity=Gravity.CENTER; setPadding(dp(28),0,dp(28),0) }
         empty.addView(ImageView(this).apply { setImageResource(R.drawable.ic_app) },LinearLayout.LayoutParams(dp(108),dp(108)))
         empty.addView(text("Your model, in 3D",24,Color.WHITE).apply { setTypeface(null,Typeface.BOLD); gravity=Gravity.CENTER })

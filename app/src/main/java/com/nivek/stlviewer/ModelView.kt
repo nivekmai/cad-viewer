@@ -2,8 +2,6 @@ package com.nivek.stlviewer
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.opengl.GLUtils
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -14,8 +12,8 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.hypot
 
-class ModelView(context: Context) : GLSurfaceView(context) {
-    private val scene=Scene()
+class ModelView(context: Context, private val onRenderError: (String) -> Unit) : GLSurfaceView(context) {
+    private val scene=Scene { message -> post { onRenderError(message) } }
     private val taps: GestureDetector
     private var lastX=0f; private var lastY=0f; private var lastSpan=0f
     private var pointers=0
@@ -67,7 +65,7 @@ class ModelView(context: Context) : GLSurfaceView(context) {
         pointers=count; lastX=x; lastY=y; lastSpan=span
         return true
     }
-    private class Scene : Renderer {
+    private class Scene(val onError: (String) -> Unit) : Renderer {
         var mesh: StlParser.Mesh?=null
         var pitch=-62f; var yaw=-28f; var panX=0f; var panY=0f; var zoom=1f; var aspect=1f
         private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var modelLocation=0; private var unlitLocation=0
@@ -90,7 +88,7 @@ class ModelView(context: Context) : GLSurfaceView(context) {
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,java.nio.ByteBuffer.allocateDirect(4).apply { putInt(-1);position(0) })
             uploadedMesh=null; textureIds=IntArray(0) // GL names cannot survive context loss.
             val vertex="uniform mat4 uMvp; uniform mat4 uModel; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=mat3(uModel)*aNormal; vUv=aUv; }"
-            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; varying vec3 vNormal; varying vec2 vUv; void main(){ if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5)base*=texture2D(uTexture,vUv); if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
+            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; varying vec3 vNormal; varying vec2 vUv; void main(){ if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
             program=GLES20.glCreateProgram()
             GLES20.glAttachShader(program,vs); GLES20.glAttachShader(program,fs); GLES20.glLinkProgram(program)
@@ -108,28 +106,16 @@ class ModelView(context: Context) : GLSurfaceView(context) {
             textureIds=IntArray(mesh.textures.size)
             val maxSize=IntArray(1); GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE,maxSize,0)
             for((index,bytes) in mesh.textures.withIndex()) {
-                val options=BitmapFactory.Options().apply { inJustDecodeBounds=true }
-                CadMeshParser.textureStream(bytes).use { BitmapFactory.decodeStream(it,null,options) }
-                options.inSampleSize=1
-                while(options.outWidth/options.inSampleSize>maxSize[0] || options.outHeight/options.inSampleSize>maxSize[0])options.inSampleSize*=2
-                options.inJustDecodeBounds=false; options.inScaled=false; options.inPremultiplied=false
-                val decoded=CadMeshParser.textureStream(bytes).use { BitmapFactory.decodeStream(it,null,options) } ?: continue
-                // GLES 2 requires power-of-two dimensions for seamless repeating textures.
-                fun supportedSize(size: Int): Int {
-                    var value=1
-                    while(value<size && value<maxSize[0])value*=2
-                    return minOf(value,maxSize[0])
-                }
-                val width=supportedSize(decoded.width);val height=supportedSize(decoded.height)
-                val bitmap=if(width!=decoded.width || height!=decoded.height)
-                    Bitmap.createScaledBitmap(decoded,width,height,true).also { if(it!==decoded)decoded.recycle() }
-                else decoded
+                val bitmap=TextureBitmap.decode(bytes,maxSize[0])
+                try {
                 GLES20.glGenTextures(1,textureIds,index);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textureIds[index])
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR)
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR)
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_REPEAT)
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_REPEAT)
-                GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,bitmap,0);bitmap.recycle()
+                GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,bitmap,0)
+                check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not upload a model texture." }
+                } finally { bitmap.recycle() }
             }
             uploadedMesh=mesh
         }
@@ -156,6 +142,18 @@ class ModelView(context: Context) : GLSurfaceView(context) {
             GLES20.glViewport(0,0,width,height); aspect=width.toFloat()/maxOf(1,height)
         }
         @Synchronized override fun onDrawFrame(unused: GL10?) {
+            try { drawFrame() }
+            catch(error: RuntimeException) { failed(error.message ?: "Could not render this model.") }
+            catch(error: OutOfMemoryError) { failed("There is not enough available memory to render this model.") }
+        }
+        private fun failed(message: String) {
+            mesh=null; uploadedMesh=null
+            if(textureIds.isNotEmpty())GLES20.glDeleteTextures(textureIds.size,textureIds,0)
+            textureIds=IntArray(0)
+            GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
+            onError(message)
+        }
+        private fun drawFrame() {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             val mesh=mesh ?: return
             uploadTextures(mesh)

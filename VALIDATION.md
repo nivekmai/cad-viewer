@@ -1,4 +1,13 @@
-# CAD Viewer 1.6.1 validation
+# CAD Viewer 1.6.2 validation
+
+- Reproduced the transparent non-power-of-two bitmap scaling crash with Robolectric 4.17 native Android graphics (API 35). The original non-premultiplied decode throws; the fixed decoder scales successfully and preserves color/alpha.
+- All 129 embedded textures in the private user model passed the same native decode/resize helper used by the renderer. The optional private-model test is skipped when CAD_PRIVATE_MESH is absent; no private content is committed.
+- Exact application shaders passed the checker texture/material-color WebGL test and a new premultiplied transparent-red blending check (108 red versus 215 opaque).
+- 74 tests passed with the private model supplied; release build and lint passed. Signed versionCode 14/versionName 1.6.2 verified with the existing installation certificate.
+- Render-thread runtime and memory exceptions now report an error and release model textures. Native driver crashes or OS process termination cannot be caught by this handler.
+- Full Android WebView/GPU loading on the user's phone remains unverified; no phone crash log was available to establish whether this was its only failure.
+
+## Previous CAD Viewer 1.6.1 validation
 
 - Tested the user-provided private SketchUp model: 66,701,742-byte input, 3,011,515 rendered triangles, 129 embedded textures. Private input/output are excluded from Git and release sources.
 - Reproduced the old native parser failure under a 128 MiB heap/direct-buffer test configuration: failed to reserve a 216,829,080-byte render buffer after allocating 72,276,360 UV bytes.

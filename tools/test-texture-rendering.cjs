@@ -26,7 +26,7 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const uniform=(name,n)=>gl.uniform1f(gl.getUniformLocation(program,name),n);
   uniform('uUnlit',0);uniform('uTextured',1);uniform('uCutoff',.5);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);
   let offset=16+vertices*20+batches*36;const length=v.getInt32(offset,true);
-  const bitmap=await createImageBitmap(new Blob([data.slice(offset+4,offset+4+length)],{type:'image/png'}),{premultiplyAlpha:'none',colorSpaceConversion:'none'});
+  const bitmap=await createImageBitmap(new Blob([data.slice(offset+4,offset+4+length)],{type:'image/png'}),{premultiplyAlpha:'premultiply',colorSpaceConversion:'none'});
   const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
   for(const param of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER])gl.texParameteri(gl.TEXTURE_2D,param,gl.LINEAR);
   for(const param of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,param,gl.REPEAT);
@@ -38,10 +38,16 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   uniform('uTextured',0);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,0,0,1);const solid=draw();
   const center=(128*256+128)*4;const solidColor=Array.from(solid.slice(center,center+4));
   uniform('uTextured',1);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);draw();
-  return {red,white,solidColor};
+  // GLUtils uploads Android premultiplied pixels. Verify straight-alpha blending
+  // doesn't multiply their RGB by alpha a second time.
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,0,0,128]));
+  uniform('uCutoff',0);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  const translucent=draw();const alphaColor=Array.from(translucent.slice(center,center+4));
+  return {red,white,solidColor,alphaColor};
  },{vertex,fragment,bytes:Array.from(bytes)});
  assert.ok(result.red>100&&result.white>100,JSON.stringify(result));
  assert.ok(result.solidColor[0]>100&&result.solidColor[1]===0&&result.solidColor[2]===0);
+ assert.ok(Math.abs(result.alphaColor[0]-result.solidColor[0]*128/255)<3,JSON.stringify(result));
  fs.mkdirSync(path.join(root,'build/cad-test'),{recursive:true});await page.screenshot({path:path.join(root,'build/cad-test/textured-skp.png')});
  console.log('PASS SketchUp texture pixels and material-color shader',result);
  }finally{await browser.close();}
