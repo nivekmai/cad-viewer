@@ -6,7 +6,12 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk=[35])
 class CadMeshParserTest {
     private fun fixture(): ByteArray {
         val b=ByteBuffer.allocate(16+60+36+7).order(ByteOrder.LITTLE_ENDIAN)

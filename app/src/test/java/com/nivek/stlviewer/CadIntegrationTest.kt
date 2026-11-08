@@ -4,8 +4,13 @@ import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /** Runs after the browser engines produce their real integration outputs. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk=[35])
 class CadIntegrationTest {
     @Test fun convertedModelsLoadThroughKotlinParsers() {
         assumeTrue(System.getProperty("cad.integration") == "true")
