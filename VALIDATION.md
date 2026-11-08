@@ -1,4 +1,15 @@
-# CAD Viewer 1.6.2 validation
+# CAD Viewer 1.6.3 validation
+
+- Traced large allocations in OpenSKP 1.5.0 to dense edge-flag arrays spanning unused IDs. The private model repeatedly allocated arrays of 20–110 MB for these ranges.
+- Replaced that table at bundle time with sparse 256-entry Uint16 pages, with zero reserved for absent entries. Tests compare old/new flags, membership and size over 20,000 writes and cover descending IDs, zero flags, byte masking, and widely separated IDs up to 0xffffffff. A hash guard rejects unexpected upstream source changes.
+- The final browser worker converted the private model successfully: 3,011,515 triangles, 129 textures, 9,821 textured batches. The 191,589,812-byte converted model is byte-for-byte identical to the pre-change output (SHA-256 comparison).
+- Desktop Node profiling: typed-array storage at completion fell from about 2.84 GB to 0.63 GB; completion RSS fell from about 3.72 GB to 2.90 GB. Final run peak RSS was about 2.93 GiB. These are desktop measurements, not Android memory guarantees.
+- A deliberately constrained 512 MiB JavaScript heap test still runs out of memory. The loader retains substantial parsing overhead; no arbitrary input/triangle limits were added. Android crash/exit history is required to establish the remaining phone failure if it persists.
+- 75 Android/JVM tests passed, with one optional private-texture test skipped. All 21 public CAD browser cases, the sparse table regression, and texture/alpha shader checks passed. Release build/lint and existing APK signing certificate verified (versionCode 15 / 1.6.3).
+- Added local crash diagnostics tests for persisted stage/exception details and exit reason labels. Diagnostics include OS exit history and sampled memory on Android 11+, with explicit Copy/Share; no automatic upload. Physical-device exit-history/UI behavior remains unverified.
+- Private inputs, profiles and converted outputs remain outside Git and release sources.
+
+## Previous CAD Viewer 1.6.2 validation
 
 - Reproduced the transparent non-power-of-two bitmap scaling crash with Robolectric 4.17 native Android graphics (API 35). The original non-premultiplied decode throws; the fixed decoder scales successfully and preserves color/alpha.
 - All 129 embedded textures in the private user model passed the same native decode/resize helper used by the renderer. The optional private-model test is skipped when CAD_PRIVATE_MESH is absent; no private content is committed.

@@ -118,6 +118,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
                 } finally { bitmap.recycle() }
             }
             uploadedMesh=mesh
+            CrashDiagnostics.stage("Rendering model")
         }
         private fun drawSurface(surface: CadMeshParser.Surface) {
             GLES20.glUniform4fv(colorLocation,1,surface.color,0)
@@ -143,7 +144,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         }
         @Synchronized override fun onDrawFrame(unused: GL10?) {
             try { drawFrame() }
-            catch(error: RuntimeException) { failed(error.message ?: "Could not render this model.") }
+            catch(error: RuntimeException) { CrashDiagnostics.failure("Render failure",error); failed(error.message ?: "Could not render this model.") }
             catch(error: OutOfMemoryError) { failed("There is not enough available memory to render this model.") }
         }
         private fun failed(message: String) {

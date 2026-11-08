@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3
+
+- Reduced SketchUp import memory by replacing the reader's dense edge-ID flag table with storage for actual edges only. Geometry and textures are unchanged; no file or triangle limits added.
+- Added local Crash diagnostics with Copy/Share in the overflow menu, including Android process-exit reasons, sampled memory, load stage, and caught/uncaught error details. Reports are never uploaded automatically.
+
 ## 1.6.2
 
 - Fixed a crash when resizing transparent SketchUp textures by using Android-compatible premultiplied bitmaps and compensating in the texture shader.

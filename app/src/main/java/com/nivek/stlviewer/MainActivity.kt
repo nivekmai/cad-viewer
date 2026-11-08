@@ -66,11 +66,13 @@ class MainActivity : Activity() {
             menu.menu.add(0,3,1,"Browse folder")
             menu.menu.add(0,2,1,"Supported formats")
             menu.menu.add(0,4,2,"Top view").isEnabled=reset.isEnabled
+            menu.menu.add(0,5,3,"Crash diagnostics")
             menu.setOnMenuItemClickListener { item ->
                 when(item.itemId) {
                     1 -> openFile(true)
                     3 -> openFolder()
                     4 -> model.topView()
+                    5 -> showDiagnostics()
                     else -> AlertDialog.Builder(this).setTitle("Supported formats").setMessage(SUPPORTED_FORMATS).setPositiveButton("OK",null).show()
                 }
                 true
@@ -224,9 +226,11 @@ class MainActivity : Activity() {
                 }
                 val mesh=if(ModelParser.needsEngine(displayName)) {
                     val type=ModelParser.extension(displayName)
+                    CrashDiagnostics.stage("Converting $type")
                     val status=when(type) { "scad"->"Compiling SCAD on your phone…"; "skp"->"Reading SketchUp on your phone…"; "dwg"->"Reading DWG on your phone…"; else->"Preparing STEP surfaces…" }
                     runOnUiThread { if(job==generation)loadingText.text=status }
                     val compiled=LocalCadEngine(this).convert(source,type)
+                    CrashDiagnostics.stage("Preparing $type render geometry")
                     try {
                         ModelParser.read(compiled.file,"compiled.${compiled.format}").also { mesh ->
                             if(compiled.units.isNotEmpty())mesh.units=compiled.units
@@ -250,6 +254,7 @@ class MainActivity : Activity() {
                         notice.text=if(mesh.notice.isEmpty())"" else "Viewing notes · Details"
                         notice.visibility=if(mesh.notice.isEmpty())View.GONE else View.VISIBLE
                         notice.setOnClickListener { AlertDialog.Builder(this).setTitle("Viewing notes").setMessage(mesh.notice).setPositiveButton("OK",null).show() }
+                        CrashDiagnostics.stage("Uploading model to renderer")
                         model.show(mesh); model.restore(camera)
                         empty.visibility=View.GONE; loading.visibility=View.GONE; reset.isEnabled=true
                     } catch(_: IOException) { showError("Could not save a local copy of this model.") }
@@ -263,7 +268,20 @@ class MainActivity : Activity() {
         }
     }
     private fun dimension(value: Double)=String.format(Locale.getDefault(),"%.3g",value)
+    private fun showDiagnostics() {
+        val report=CrashDiagnostics.report()
+        val text=TextView(this).apply { this.text=report; setTextIsSelectable(true); setPadding(dp(20),dp(12),dp(20),dp(12)) }
+        AlertDialog.Builder(this).setTitle("Crash diagnostics")
+            .setView(ScrollView(this).apply { addView(text) })
+            .setPositiveButton("Copy") { _,_ ->
+                getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("CAD Viewer diagnostics",report))
+                Toast.makeText(this,"Diagnostics copied",Toast.LENGTH_SHORT).show()
+            }.setNeutralButton("Share") { _,_ ->
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,report),"Share diagnostics"))
+            }.setNegativeButton("Close",null).show()
+    }
     private fun showError(message: String) {
+        CrashDiagnostics.failure(message)
         loading.visibility=View.GONE
         AlertDialog.Builder(this).setTitle("Couldn't open model").setMessage(message).setPositiveButton("OK",null).show()
     }

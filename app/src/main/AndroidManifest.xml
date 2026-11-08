@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
-    <application android:label="CAD Viewer" android:theme="@style/AppTheme"
+    <application android:name=".CadApplication" android:label="CAD Viewer" android:theme="@style/AppTheme"
         android:icon="@drawable/ic_app" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">

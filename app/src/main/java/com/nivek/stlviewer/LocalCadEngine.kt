@@ -53,7 +53,8 @@ class LocalCadEngine(private val activity: Activity) {
                         bridge.failed("Local $label reader could not load: ${error.description}")
                     }
                     override fun onRenderProcessGone(view: WebView,detail: RenderProcessGoneDetail): Boolean {
-                        bridge.failed("The $label reader ran out of resources. Try a smaller model."); return true
+                        CrashDiagnostics.failure("$label WebView renderer exited: crashed=${detail.didCrash()}, priority=${detail.rendererPriorityAtExit()}")
+                        bridge.failed("The $label reader stopped unexpectedly. See Crash diagnostics in the menu for details."); return true
                     }
                 }
                 activity.findViewById<ViewGroup>(android.R.id.content).addView(view,ViewGroup.LayoutParams(1,1))
