@@ -1,4 +1,12 @@
-# CAD Viewer 1.6.4 validation
+# CAD Viewer 1.6.5 validation
+
+- SketchUp models now keep repeated components instanced (CVM2 format; CVM1 kept as fallback). For the private 3.0M-triangle test house, measured in Node with the bundled OpenSKP 1.5.0: 898,982 unique triangles instead of 3,011,515 baked, 326 instanced placements plus 292 static surfaces instead of 16,662 draw batches, 152.7 MB of converted output instead of 227.3 MB, and converter build time 64.4 s instead of 94.7 s. Triangle conservation and world bounds verified against the baked scene for the house and all public fixtures.
+- Geometry is uploaded to persistent GPU buffers once per model instead of re-streamed through a 1 MiB buffer on every frame. Rotating the house previously re-uploaded about 289 MB per frame in 281 batches with a glFinish after each one; frames now only set a matrix uniform and issue draw calls.
+- Textures are capped at 1024 px on the longest side before power-of-two rounding and uploaded with mipmaps. GPU texture memory for the house drops from about 504 MB to about 280 MB (mipmaps add a third on top of the capped size). A 1024 px cap was chosen over 512 px to keep visible texture detail; the cap is a resize at load, not a model content cutoff.
+- The converter-to-app bridge now sends 64 KiB chunks instead of 24 KiB (about 3,500 bridge calls for the house instead of 9,500). Normals use a per-instance inverse-transpose matrix, so mirrored and non-uniformly scaled placements shade correctly. New Kotlin tests cover CVM2 parsing, instance-matrix normalization, unknown resource references, and truncated textures.
+- Phone-specific total memory and interaction performance remain unverified: no Android device or working headless WebGL browser was available in this environment, so the frame-rate gain is from the removed per-frame upload work, not a measured on-device frame time. CI runs the full suite (unit tests, browser tests, lint) on JDK 21 / Android platform 37, which this machine could not install.
+
+## Previous CAD Viewer 1.6.4 validation
 
 - User-provided Android exit history confirmed low-memory termination in v1.6.3 at the Rendering model stage, with a WebView renderer low-memory exit two seconds earlier. Sampled RSS values are not peak memory measurements.
 - Replaced full-model GLES client arrays with a reusable 32,766-vertex interleaved VBO (1,048,512 bytes) and matching CPU staging buffer. Each batch preserves material draw ranges, UVs, normals, opaque/blended ordering, and lines; glFinish completes the batch before storage reuse. GPU/CPU staging sizes do not bound total model size, textures, mapped pages, or driver overhead.

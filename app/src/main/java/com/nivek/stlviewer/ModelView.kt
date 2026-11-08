@@ -68,14 +68,17 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
     private class Scene(val onError: (String) -> Unit) : Renderer {
         var mesh: StlParser.Mesh?=null
         var pitch=-62f; var yaw=-28f; var panX=0f; var panY=0f; var zoom=1f; var aspect=1f
-        private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var modelLocation=0; private var unlitLocation=0
+        private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var normalMatrixLocation=0; private var unlitLocation=0
         private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
         private var whiteTexture=0
         private var geometryBuffer=0
+        private var instancedVbos=IntArray(0)
+        private var uploadedInstancedMesh: StlParser.Mesh?=null
         private val batch=GeometryBatch()
         private var uploadedMesh: StlParser.Mesh?=null
         private var textureIds=IntArray(0)
         private val model=FloatArray(16); private val projection=FloatArray(16); private val mvp=FloatArray(16)
+        private val tmpModel=FloatArray(16); private val tmpMvp=FloatArray(16)
         @Synchronized fun reset() {
             pitch=if(mesh?.height==0.0)0f else -62f; yaw=if(mesh?.height==0.0)0f else -28f
             panX=0f; panY=0f; zoom=1f
@@ -89,10 +92,11 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR)
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,java.nio.ByteBuffer.allocateDirect(4).apply { putInt(-1);position(0) })
             uploadedMesh=null; textureIds=IntArray(0) // GL names cannot survive context loss.
+            uploadedInstancedMesh=null; instancedVbos=IntArray(0)
             val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
             GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*32,null,GLES20.GL_STREAM_DRAW)
-            val vertex="uniform mat4 uMvp; uniform mat4 uModel; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=mat3(uModel)*aNormal; vUv=aUv; }"
+            val vertex="uniform mat4 uMvp; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=uNormalMatrix*aNormal; vUv=aUv; }"
             val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; varying vec3 vNormal; varying vec2 vUv; void main(){ if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
             program=GLES20.glCreateProgram()
@@ -103,7 +107,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             position=GLES20.glGetAttribLocation(program,"aPosition"); normal=GLES20.glGetAttribLocation(program,"aNormal")
             uvLocation=GLES20.glGetAttribLocation(program,"aUv"); colorLocation=GLES20.glGetUniformLocation(program,"uColor")
             texturedLocation=GLES20.glGetUniformLocation(program,"uTextured"); samplerLocation=GLES20.glGetUniformLocation(program,"uTexture"); cutoffLocation=GLES20.glGetUniformLocation(program,"uCutoff")
-            mvpLocation=GLES20.glGetUniformLocation(program,"uMvp"); modelLocation=GLES20.glGetUniformLocation(program,"uModel"); unlitLocation=GLES20.glGetUniformLocation(program,"uUnlit")
+            mvpLocation=GLES20.glGetUniformLocation(program,"uMvp"); normalMatrixLocation=GLES20.glGetUniformLocation(program,"uNormalMatrix"); unlitLocation=GLES20.glGetUniformLocation(program,"uUnlit")
         }
         private fun uploadTextures(mesh: StlParser.Mesh) {
             if(uploadedMesh===mesh)return
@@ -120,11 +124,130 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_REPEAT)
                 GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_REPEAT)
                 GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,bitmap,0)
+                // Mipmaps: a house viewed from across the room samples a
+                // 1,024 px texture at a few pixels on screen. Without them
+                // every fragment fetches the full-resolution texture; with
+                // them it fetches the matching mip level. Power-of-two
+                // textures (guaranteed by TextureBitmap) cost 33% more
+                // memory for far cheaper minification.
+                GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D)
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR_MIPMAP_LINEAR)
                 check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not upload a model texture." }
                 } finally { bitmap.recycle() }
             }
             uploadedMesh=mesh
             CrashDiagnostics.stage("Rendering model")
+        }
+        private fun deleteInstancedVbos() {
+            if(instancedVbos.isNotEmpty())GLES20.glDeleteBuffers(instancedVbos.size,instancedVbos,0)
+            instancedVbos=IntArray(0); uploadedInstancedMesh=null
+        }
+        // Upload instanced geometry once and keep it on the GPU. The previous
+        // renderer re-streamed the whole model through a 1 MiB buffer on
+        // every frame (289 MB per frame for the large house model, with a
+        // glFinish after each 32,766-vertex batch), so rotating lagged even
+        // though the GPU itself was idle most of the time. Static and
+        // resource geometry are uploaded here, once per model; frames then
+        // only set a matrix uniform and issue draw calls.
+        private fun uploadInstanced(mesh: StlParser.Mesh) {
+            if(uploadedInstancedMesh===mesh)return
+            deleteInstancedVbos()
+            val ids=IntArray(4); GLES20.glGenBuffers(4,ids,0); instancedVbos=ids
+            fun upload(buffer: java.nio.FloatBuffer?,target: Int) {
+                if(buffer==null)return
+                val data=buffer.duplicate(); data.position(0); data.limit(buffer.capacity())
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,target)
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,data.remaining()*4,data,GLES20.GL_STATIC_DRAW)
+            }
+            upload(mesh.data,ids[0])
+            upload(mesh.textureCoordinates,ids[1])
+            upload(mesh.resourceData,ids[2])
+            var uvBytes=0
+            for(resource in mesh.resources)uvBytes+=resource.count*20
+            if(uvBytes>0) {
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,ids[3])
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,uvBytes,null,GLES20.GL_STATIC_DRAW)
+                var offset=0
+                for(resource in mesh.resources) {
+                    val data=resource.uvs.duplicate(); data.position(0); data.limit(resource.uvs.capacity())
+                    GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER,offset,data.remaining()*4,data)
+                    offset+=resource.count*20
+                }
+            }
+            uploadedInstancedMesh=mesh
+            check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not upload model geometry." }
+        }
+        // Inverse-transpose of the upper 3x3 of a model matrix, for correct
+        // normals under non-uniform and mirrored instance scales. Returns
+        // false for a singular matrix, whose instance is skipped.
+        private fun normalMatrix(matrix: FloatArray,out: FloatArray): Boolean {
+            val inv=FloatArray(16)
+            if(!Matrix.invertM(inv,0,matrix,0))return false
+            out[0]=inv[0];out[1]=inv[4];out[2]=inv[8]
+            out[3]=inv[1];out[4]=inv[5];out[5]=inv[9]
+            out[6]=inv[2];out[7]=inv[6];out[8]=inv[10]
+            return true
+        }
+        private fun bindGeometry(positionVbo: Int,uvVbo: Int) {
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,positionVbo)
+            GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal)
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,24,0)
+            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,24,12)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,uvVbo)
+            GLES20.glEnableVertexAttribArray(uvLocation)
+            GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,20,12)
+        }
+        private fun drawInstanced(mesh: StlParser.Mesh) {
+            uploadTextures(mesh); uploadInstanced(mesh)
+            GLES20.glUniform1f(unlitLocation,0f)
+            val normalMat=FloatArray(9)
+            // Static geometry: one draw per material surface.
+            bindGeometry(instancedVbos[0],instancedVbos[1])
+            if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+            GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
+            for(surface in mesh.surfaces.filter { it.flags and 2==0 }) {
+                drawSurface(surface)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES,surface.first,surface.count)
+            }
+            // Instanced resources: one draw per surface per placement.
+            bindGeometry(instancedVbos[2],instancedVbos[3])
+            for(resource in mesh.resources) {
+                for(instance in resource.instances) {
+                    Matrix.multiplyMM(tmpModel,0,model,0,instance,0)
+                    Matrix.multiplyMM(tmpMvp,0,projection,0,tmpModel,0)
+                    if(!normalMatrix(tmpModel,normalMat))continue
+                    GLES20.glUniformMatrix4fv(mvpLocation,1,false,tmpMvp,0)
+                    GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+                    for(surface in resource.surfaces.filter { it.flags and 2==0 }) {
+                        drawSurface(surface)
+                        GLES20.glDrawArrays(GLES20.GL_TRIANGLES,resource.first+surface.first,surface.count)
+                    }
+                }
+            }
+            // Transparent surfaces, far to near, without depth writes.
+            GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)
+            bindGeometry(instancedVbos[0],instancedVbos[1])
+            if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+            GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
+            for(surface in mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) }) {
+                drawSurface(surface)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES,surface.first,surface.count)
+            }
+            bindGeometry(instancedVbos[2],instancedVbos[3])
+            val transparent=mesh.resources.flatMap { resource -> resource.instances.map { it to resource } }
+                .sortedBy { model[2]*it.first[12]+model[6]*it.first[13]+model[10]*it.first[14] }
+            for((instance,resource) in transparent) {
+                Matrix.multiplyMM(tmpModel,0,model,0,instance,0)
+                Matrix.multiplyMM(tmpMvp,0,projection,0,tmpModel,0)
+                if(!normalMatrix(tmpModel,normalMat))continue
+                GLES20.glUniformMatrix4fv(mvpLocation,1,false,tmpMvp,0)
+                GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+                for(surface in resource.surfaces.filter { it.flags and 2!=0 }) {
+                    drawSurface(surface)
+                    GLES20.glDrawArrays(GLES20.GL_TRIANGLES,resource.first+surface.first,surface.count)
+                }
+            }
+            GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
         }
         private fun drawSurface(surface: CadMeshParser.Surface) {
             GLES20.glUniform4fv(colorLocation,1,surface.color,0)
@@ -155,6 +278,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         }
         private fun failed(message: String) {
             mesh=null; uploadedMesh=null
+            deleteInstancedVbos()
             if(textureIds.isNotEmpty())GLES20.glDeleteTextures(textureIds.size,textureIds,0)
             textureIds=IntArray(0)
             GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
@@ -163,20 +287,23 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private fun drawFrame() {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             val mesh=mesh ?: return
-            uploadTextures(mesh)
-            CrashDiagnostics.stage("Streaming geometry to GPU")
             val extent=verticalExtent()
             Matrix.orthoM(projection,0,-extent*aspect,extent*aspect,-extent,extent,-20f,20f)
             Matrix.setIdentityM(model,0); Matrix.translateM(model,0,panX,panY,0f)
             Matrix.rotateM(model,0,pitch,1f,0f,0f); Matrix.rotateM(model,0,yaw,0f,0f,1f)
             Matrix.multiplyMM(mvp,0,projection,0,model,0)
             GLES20.glUseProgram(program)
-            GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0); GLES20.glUniformMatrix4fv(modelLocation,1,false,model,0)
+            GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glUniform1i(samplerLocation,0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,whiteTexture)
             GLES20.glDisableVertexAttribArray(uvLocation); GLES20.glVertexAttrib2f(uvLocation,0f,0f)
             GLES20.glUniform1f(texturedLocation,0f); GLES20.glUniform1f(cutoffLocation,0f)
             GLES20.glUniform4f(colorLocation,.36f,.82f,.71f,1f)
+            if(mesh.resources.isNotEmpty()) { drawInstanced(mesh); CrashDiagnostics.stage("Frame complete"); return }
+            uploadTextures(mesh)
+            CrashDiagnostics.stage("Streaming geometry to GPU")
+            val normalMat=FloatArray(9)
+            if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
             if(mesh.triangles>0) {
                 GLES20.glUniform1f(unlitLocation,0f)
                 if(mesh.surfaces.isEmpty())stream(mesh,null,mesh.triangles*3)

@@ -26,18 +26,16 @@ class TextureBitmapTest {
     @Test fun privateModelTexturesWhenProvided() {
         val path=System.getenv("CAD_PRIVATE_MESH")
         org.junit.Assume.assumeTrue("Optional private model is not present",path!=null)
-        java.io.RandomAccessFile(path,"r").use { file ->
-            fun int()=Integer.reverseBytes(file.readInt())
-            file.seek(4); val vertices=int(); val batches=int(); val images=int()
-            file.seek(16L+vertices*20L+batches*36L)
-            repeat(images) {
-                val length=int(); val bytes=file.channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,file.filePointer,length.toLong())
-                val bitmap=TextureBitmap.decode(bytes,4096)
+        // Parse through the real mesh reader so this covers both the baked
+        // CVM1 and instanced CVM2 layouts.
+        val mesh=ModelParser.read(java.io.File(path!!),"private.cadmesh")
+        assertEquals(129,mesh.textures.size)
+        for(bytes in mesh.textures) {
+            val bitmap=TextureBitmap.decode(bytes,4096)
+            try {
                 assertTrue(bitmap.width>0 && bitmap.height>0)
                 if(bitmap.hasAlpha())assertTrue(bitmap.isPremultiplied)
-                bitmap.recycle(); file.seek(file.filePointer+length)
-            }
-            assertEquals(129,images)
+            } finally { bitmap.recycle() }
         }
     }
     @Test fun unpremultipliedAlphaCannotBeScaled() {

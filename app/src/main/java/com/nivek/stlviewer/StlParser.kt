@@ -23,6 +23,16 @@ object StlParser {
         var textureOffset = 0
         @JvmField var units = "units"
         @JvmField var notice = ""
+        /** Instanced (CVM2) geometry: one uploaded copy of each repeated
+         * definition, drawn once per placement. Empty for every other format
+         * and for baked CVM1 meshes, which keep the streaming path. */
+        var resources: List<CadMeshParser.Resource> = emptyList()
+        /** Interleaved position/normal render data for [resources], in the
+         * same 6-float layout as [data], concatenated in resource order. */
+        var resourceData: FloatBuffer? = null
+        /** UV source (5 floats per vertex: xyz + uv) for the static geometry
+         * is [textureCoordinates]; instanced resources carry their own mapped
+         * UV buffers on [CadMeshParser.Resource.uvs]. */
         @JvmField val width: Double
         @JvmField val depth: Double
         @JvmField val height: Double

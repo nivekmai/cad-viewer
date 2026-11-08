@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.5
+
+- SketchUp models now keep repeated components instanced instead of baking every placement into one triangle soup (new CVM2 mesh format; CVM1 kept as fallback). For the 3.0M-triangle test house: 898,982 unique triangles instead of 3,011,515, 326 instanced placements plus 292 static surfaces instead of 16,662 draw batches, and 152.7 MB of converted output instead of 227.3 MB.
+- Geometry is uploaded to persistent GPU buffers once per model instead of re-streamed through a 1 MiB buffer on every frame, so rotating a large model no longer re-uploads hundreds of megabytes per frame.
+- Textures are capped at 1024 px on the longest side before power-of-two rounding (504 MB of GPU texture memory for the test house becomes about 280 MB) and uploaded with mipmaps, so distant surfaces sample the matching mip level instead of the full-resolution texture.
+- The converter-to-app bridge now sends 64 KiB chunks instead of 24 KiB, cutting JS-to-Java bridge calls for the test house from about 9,500 to about 3,500. Normals use a per-instance inverse-transpose matrix, so mirrored and non-uniformly scaled placements shade correctly.
+
 ## 1.6.4
 
 - Stream geometry through one reusable GPU buffer in bounded batches, completing each upload batch before reusing it. Avoid model-sized client-array submissions and unbounded queued geometry copies.

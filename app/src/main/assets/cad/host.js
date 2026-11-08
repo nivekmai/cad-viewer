@@ -9,8 +9,8 @@ function start(type) {
     worker.onmessage = event => {
       const result = event.data;
       if(result.chunk) {
-        for(let offset=0;offset<result.chunk.length;offset+=24576) {
-          const part=result.chunk.subarray(offset,offset+24576);
+        for(let offset=0;offset<result.chunk.length;offset+=65536) {
+          const part=result.chunk.subarray(offset,offset+65536);
           Compiler.chunk(btoa(String.fromCharCode.apply(null,part)));
         }
         worker.postMessage({ack:true});return;
@@ -18,8 +18,8 @@ function start(type) {
       worker.terminate(); worker=null;
       if (result.error) Compiler.failed(result.error);
       else {
-        for (let offset = 0; offset < (result.bytes?.length || 0); offset += 24576) {
-          const chunk = result.bytes.subarray(offset, offset + 24576);
+        for (let offset = 0; offset < (result.bytes?.length || 0); offset += 65536) {
+          const chunk = result.bytes.subarray(offset, offset + 65536);
           Compiler.chunk(btoa(String.fromCharCode.apply(null, chunk)));
         }
         Compiler.finished(result.format, result.units || '', result.notice || '');

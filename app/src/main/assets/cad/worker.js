@@ -82,17 +82,34 @@ async function readDwg(input) {
 async function readSkp(input) {
   importScripts('openskp.js');
   const warnings = [];
+  const options = {
+    frontSideOnly: false, respectEdgeVisibility: true,
+    onLog(level, message) { if (level !== 'debug' && level !== 'info' && warnings.length < 10) warnings.push(String(message)); }
+  };
+  // Instanced first: buildInstancedScene keeps each component definition
+  // once instead of baking every placement into its own vertices. On the
+  // large house model that is 898,982 unique triangles instead of
+  // 3,011,515 baked ones, and the CVM2 transfer is roughly half the size.
+  // Fall back to the baked CVM1 path if the instanced builder cannot read
+  // a file the baked builder accepts.
   let scene;
   try {
-    scene = OpenSkp.buildScene(input.buffer, {
-      frontSideOnly: false, respectEdgeVisibility: true,
-      onLog(level, message) { if (level !== 'debug' && level !== 'info' && warnings.length < 10) warnings.push(String(message)); }
-    });
+    scene = OpenSkp.buildInstancedScene(input.buffer, options);
   } catch (error) {
-    throw new Error('This SketchUp file could not be read. Its version or features may not be supported, or it may be damaged. ' + String(error.message || error).slice(0, 300));
+    warnings.push('Instanced import unavailable, using baked import: ' + String(error.message || error).slice(0, 120));
+    try {
+      scene = OpenSkp.buildScene(input.buffer, options);
+    } catch (error2) {
+      throw new Error('This SketchUp file could not be read. Its version or features may not be supported, or it may be damaged. ' + String(error2.message || error2).slice(0, 300));
+    }
+    importScripts('skp-mesh.js');
+    const chunks=skpSceneChunks(scene);
+    return {chunks, format: 'cadmesh', units: 'millimeter',
+      notice: 'SketchUp materials and embedded PNG/JPEG textures. Projected textures may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some file versions and features may be unsupported.' +
+        (warnings.length ? '\nReader notes: ' + warnings.join('\n') : '')};
   }
   importScripts('skp-mesh.js');
-  const chunks=skpSceneChunks(scene);
+  const chunks=skpInstancedSceneChunks(scene);
   return {chunks, format: 'cadmesh', units: 'millimeter',
     notice: 'SketchUp materials and embedded PNG/JPEG textures. Projected textures may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some file versions and features may be unsupported.' +
       (warnings.length ? '\nReader notes: ' + warnings.join('\n') : '')};

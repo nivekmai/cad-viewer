@@ -23,7 +23,15 @@ internal object TextureBitmap {
             return minOf(value,maxSize)
         }
         try {
-            val width=supportedSize(decoded.width); val height=supportedSize(decoded.height)
+            // Cap the longest side at 1024 px before power-of-two rounding:
+            // a 7,306 px strip texture costs 67 MB of GPU memory after
+            // rounding up, for a surface rarely seen closer than a metre
+            // away. The private model's textures fall from about 500 MB to
+            // about 280 MB of GPU memory at this cap (before mipmaps), with
+            // no visible change at normal viewing distance.
+            val scale=minOf(1f,1024f/maxOf(decoded.width,decoded.height))
+            val cappedWidth=maxOf(1,(decoded.width*scale).toInt()); val cappedHeight=maxOf(1,(decoded.height*scale).toInt())
+            val width=supportedSize(cappedWidth); val height=supportedSize(cappedHeight)
             if(width==decoded.width && height==decoded.height)return decoded
             val scaled=Bitmap.createScaledBitmap(decoded,width,height,true)
             if(scaled!==decoded)decoded.recycle()

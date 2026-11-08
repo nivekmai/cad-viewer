@@ -15,9 +15,13 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const shader=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;};
   const program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vertex));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);
   if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
-  const data=new Uint8Array(bytes),v=new DataView(data.buffer),vertices=v.getInt32(4,true),batches=v.getInt32(8,true);
+  const data=new Uint8Array(bytes),v=new DataView(data.buffer),magic=String.fromCharCode(...data.subarray(0,4));
+  // CVM1 and CVM2 share the vertex (xyz+uv, 20 bytes) and batch (36 bytes)
+  // layouts; only the header size differs (16 vs 24 bytes).
+  const base=magic==='CVM2'?24:16;
+  const vertices=v.getInt32(4,true),batches=v.getInt32(8,true);
   const xyz=[],uv=[];
-  for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(16+i*20,true)/254-1,v.getFloat32(20+i*20,true)/254-1,0);uv.push(v.getFloat32(28+i*20,true),v.getFloat32(32+i*20,true));}
+  for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(base+i*20,true)/254-1,v.getFloat32(base+4+i*20,true)/254-1,0);uv.push(v.getFloat32(base+12+i*20,true),v.getFloat32(base+16+i*20,true));}
   // Same interleaved position/normal/UV layout as GeometryBatch and ModelView.
   // Tiny capacity deliberately forces multiple uploads for the fixture.
   const capacity=3,staging=new Float32Array(capacity*8),buffer=gl.createBuffer();
@@ -26,15 +30,16 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
     const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,offset);gl.enableVertexAttribArray(loc);
   }
   const identity=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
-  for(const name of ['uMvp','uModel'])gl.uniformMatrix4fv(gl.getUniformLocation(program,name),false,identity);
+  gl.uniformMatrix4fv(gl.getUniformLocation(program,'uMvp'),false,identity);
+  gl.uniformMatrix3fv(gl.getUniformLocation(program,'uNormalMatrix'),false,new Float32Array([1,0,0,0,1,0,0,0,1]));
   const uniform=(name,n)=>gl.uniform1f(gl.getUniformLocation(program,name),n);
   uniform('uUnlit',0);uniform('uTextured',1);uniform('uCutoff',.5);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);
-  let offset=16+vertices*20+batches*36;const length=v.getInt32(offset,true);
+  let offset=base+vertices*20+batches*36;const length=v.getInt32(offset,true);
   const bitmap=await createImageBitmap(new Blob([data.slice(offset+4,offset+4+length)],{type:'image/png'}),{premultiplyAlpha:'premultiply',colorSpaceConversion:'none'});
   const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
   for(const param of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER])gl.texParameteri(gl.TEXTURE_2D,param,gl.LINEAR);
   for(const param of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,param,gl.REPEAT);
-  const batchOffset=16+vertices*20;
+  const batchOffset=base+vertices*20;
   let first=0,count=0;for(let i=0;i<batches;i++)if(v.getInt32(batchOffset+i*36+24,true)===0){first=v.getInt32(batchOffset+i*36,true);count=v.getInt32(batchOffset+i*36+4,true);}
   function draw(){gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);for(let offset=first;offset<first+count;offset+=capacity) {
     const n=Math.min(capacity,first+count-offset);
