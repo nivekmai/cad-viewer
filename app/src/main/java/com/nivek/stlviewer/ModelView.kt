@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.hypot
+import kotlin.math.sqrt
 
 class ModelView(context: Context, private val onRenderError: (String) -> Unit) : GLSurfaceView(context) {
     private val scene=Scene { message -> post { onRenderError(message) } }
@@ -24,11 +25,37 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         taps=GestureDetector(context,object: GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent)=true
             override fun onDoubleTap(e: MotionEvent): Boolean { reset(); return true }
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { performClick(); return true }
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                performClick()
+                if(sectionPicking)pickAt(e.x,e.y)
+                return true
+            }
         })
     }
-    fun show(mesh: StlParser.Mesh) { queueEvent { scene.mesh=mesh; scene.reset() }; requestRender() }
+    fun show(mesh: StlParser.Mesh) { queueEvent { scene.mesh=mesh; scene.clipEnabled=false; scene.reset() }; requestRender() }
     fun reset() { queueEvent(scene::reset); requestRender() }
+    // Cross-section analysis. Arming makes the next single tap pick a face
+    // instead of doing nothing; the picked face places the cut plane, and
+    // the slider moves it. Clearing only turns the clip uniforms off, so
+    // the model stays uploaded and is never reloaded.
+    private var sectionPicking=false
+    var onSectionPicked: ((SectionClip.Pick?, Float, Float) -> Unit)?=null
+    fun setSectionPicking(enabled: Boolean) { sectionPicking=enabled }
+    fun setSectionOffset(offset: Float) {
+        queueEvent { synchronized(scene) { if(scene.clipEnabled)scene.clipPlane[3]=-offset } }; requestRender()
+    }
+    fun clearSection() {
+        sectionPicking=false
+        queueEvent { synchronized(scene) { scene.clipEnabled=false } }; requestRender()
+    }
+    private fun pickAt(x: Float,y: Float) {
+        val w=width.toFloat(); val h=height.toFloat()
+        if(w<=0f || h<=0f)return
+        queueEvent {
+            val result=synchronized(scene) { scene.pick(x,y,w,h) }
+            post { onSectionPicked?.invoke(result?.first,result?.second ?: 0f,result?.third ?: 0f) }
+        }
+    }
     fun topView() {
         queueEvent { synchronized(scene) { scene.pitch=0f; scene.yaw=0f; scene.panX=0f; scene.panY=0f; scene.zoom=1f } }; requestRender()
     }
@@ -68,8 +95,14 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
     private class Scene(val onError: (String) -> Unit) : Renderer {
         var mesh: StlParser.Mesh?=null
         var pitch=-62f; var yaw=-28f; var panX=0f; var panY=0f; var zoom=1f; var aspect=1f
+        // Section clip plane, in model space: keep fragments where
+        // dot(position, normal) <= offset. clipPlane stores (nx, ny, nz, -offset).
+        var clipEnabled=false
+        var clipPlane=FloatArray(4)
         private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var normalMatrixLocation=0; private var unlitLocation=0
         private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
+        private var localLocation=0; private var clipPlaneLocation=0; private var clipEnabledLocation=0
+        private val identity=FloatArray(16).apply { Matrix.setIdentityM(this,0) }
         private var whiteTexture=0
         private var geometryBuffer=0
         private var instancedVbos=IntArray(0)
@@ -96,8 +129,8 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
             GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*32,null,GLES20.GL_STREAM_DRAW)
-            val vertex="uniform mat4 uMvp; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=uNormalMatrix*aNormal; vUv=aUv; }"
-            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; varying vec3 vNormal; varying vec2 vUv; void main(){ if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
+            val vertex="uniform mat4 uMvp; uniform mat4 uLocal; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=uNormalMatrix*aNormal; vUv=aUv; vModelPos=(uLocal*vec4(aPosition,1.0)).xyz; }"
+            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && dot(vModelPos,uClipPlane.xyz)+uClipPlane.w>0.0)discard; if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
             program=GLES20.glCreateProgram()
             GLES20.glAttachShader(program,vs); GLES20.glAttachShader(program,fs); GLES20.glLinkProgram(program)
@@ -108,6 +141,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             uvLocation=GLES20.glGetAttribLocation(program,"aUv"); colorLocation=GLES20.glGetUniformLocation(program,"uColor")
             texturedLocation=GLES20.glGetUniformLocation(program,"uTextured"); samplerLocation=GLES20.glGetUniformLocation(program,"uTexture"); cutoffLocation=GLES20.glGetUniformLocation(program,"uCutoff")
             mvpLocation=GLES20.glGetUniformLocation(program,"uMvp"); normalMatrixLocation=GLES20.glGetUniformLocation(program,"uNormalMatrix"); unlitLocation=GLES20.glGetUniformLocation(program,"uUnlit")
+            localLocation=GLES20.glGetUniformLocation(program,"uLocal"); clipPlaneLocation=GLES20.glGetUniformLocation(program,"uClipPlane"); clipEnabledLocation=GLES20.glGetUniformLocation(program,"uClipEnabled")
         }
         private fun uploadTextures(mesh: StlParser.Mesh) {
             if(uploadedMesh===mesh)return
@@ -203,6 +237,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             val normalMat=FloatArray(9)
             // Static geometry: one draw per material surface.
             bindGeometry(instancedVbos[0],instancedVbos[1])
+            GLES20.glUniformMatrix4fv(localLocation,1,false,identity,0)
             if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
             GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
             for(surface in mesh.surfaces.filter { it.flags and 2==0 }) {
@@ -218,6 +253,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
                     if(!normalMatrix(tmpModel,normalMat))continue
                     GLES20.glUniformMatrix4fv(mvpLocation,1,false,tmpMvp,0)
                     GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+                    GLES20.glUniformMatrix4fv(localLocation,1,false,instance,0)
                     for(surface in resource.surfaces.filter { it.flags and 2==0 }) {
                         drawSurface(surface)
                         GLES20.glDrawArrays(GLES20.GL_TRIANGLES,resource.first+surface.first,surface.count)
@@ -227,6 +263,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             // Transparent surfaces, far to near, without depth writes.
             GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)
             bindGeometry(instancedVbos[0],instancedVbos[1])
+            GLES20.glUniformMatrix4fv(localLocation,1,false,identity,0)
             if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
             GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
             for(surface in mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) }) {
@@ -242,6 +279,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
                 if(!normalMatrix(tmpModel,normalMat))continue
                 GLES20.glUniformMatrix4fv(mvpLocation,1,false,tmpMvp,0)
                 GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+                GLES20.glUniformMatrix4fv(localLocation,1,false,instance,0)
                 for(surface in resource.surfaces.filter { it.flags and 2!=0 }) {
                     drawSurface(surface)
                     GLES20.glDrawArrays(GLES20.GL_TRIANGLES,resource.first+surface.first,surface.count)
@@ -261,6 +299,36 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private fun depth(surface: CadMeshParser.Surface,mesh: StlParser.Mesh): Float {
             val i=surface.first*6
             return model[2]*mesh.data.get(i)+model[6]*mesh.data.get(i+1)+model[10]*mesh.data.get(i+2)
+        }
+        // Ray-cast a tap into model space (orthographic camera: the ray
+        // direction is constant, only its origin moves with the tap) and
+        // place the clip plane on the nearest face. Returns the pick plus
+        // the slider range (min/max offset along the face normal over the
+        // model), or null when no model is loaded. Runs on the GL thread,
+        // where the camera and mesh buffers live.
+        fun pick(x: Float,y: Float,w: Float,h: Float): Triple<SectionClip.Pick?,Float,Float>? {
+            val mesh=mesh ?: return null
+            val ndcX=2f*x/w-1f; val ndcY=1f-2f*y/h
+            val extent=verticalExtent()
+            val viewModel=FloatArray(16)
+            Matrix.setIdentityM(viewModel,0); Matrix.translateM(viewModel,0,panX,panY,0f)
+            Matrix.rotateM(viewModel,0,pitch,1f,0f,0f); Matrix.rotateM(viewModel,0,yaw,0f,0f,1f)
+            val inv=FloatArray(16)
+            if(!Matrix.invertM(inv,0,viewModel,0))return Triple(null,0f,0f)
+            val eye=FloatArray(4); val dirEye=FloatArray(4)
+            Matrix.multiplyMV(eye,0,inv,0,floatArrayOf(ndcX*extent*aspect,ndcY*extent,0f,1f),0)
+            Matrix.multiplyMV(dirEye,0,inv,0,floatArrayOf(0f,0f,-1f,0f),0)
+            val dir=floatArrayOf(dirEye[0],dirEye[1],dirEye[2])
+            val length=sqrt(dir[0]*dir[0]+dir[1]*dir[1]+dir[2]*dir[2])
+            if(length==0f)return Triple(null,0f,0f)
+            dir[0]/=length; dir[1]/=length; dir[2]/=length
+            val hit=SectionClip.pick(mesh,floatArrayOf(eye[0],eye[1],eye[2]),dir) ?: return Triple(null,0f,0f)
+            val n=hit.normal
+            val offset=n[0]*hit.point[0]+n[1]*hit.point[1]+n[2]*hit.point[2]
+            clipPlane[0]=n[0]; clipPlane[1]=n[1]; clipPlane[2]=n[2]; clipPlane[3]=-offset
+            clipEnabled=true
+            val range=SectionClip.planeRange(SectionClip.modelHalfExtents(mesh),n)
+            return Triple(hit,range.first,range.second)
         }
         private fun shader(type: Int,source: String): Int {
             val shader=GLES20.glCreateShader(type); GLES20.glShaderSource(shader,source); GLES20.glCompileShader(shader)
@@ -294,6 +362,9 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             Matrix.multiplyMM(mvp,0,projection,0,model,0)
             GLES20.glUseProgram(program)
             GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
+            GLES20.glUniform1f(clipEnabledLocation,if(clipEnabled)1f else 0f)
+            GLES20.glUniform4fv(clipPlaneLocation,1,clipPlane,0)
+            GLES20.glUniformMatrix4fv(localLocation,1,false,identity,0)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glUniform1i(samplerLocation,0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,whiteTexture)
             GLES20.glDisableVertexAttribArray(uvLocation); GLES20.glVertexAttrib2f(uvLocation,0f,0f)

@@ -41,6 +41,14 @@ class MainActivity : Activity() {
     private lateinit var empty: LinearLayout
     private lateinit var loading: LinearLayout
     private lateinit var reset: Button
+    private lateinit var sectionButton: Button
+    private lateinit var pickHint: TextView
+    private lateinit var sectionPanel: LinearLayout
+    private lateinit var sectionSeek: SeekBar
+    private var sectionState=SectionState.IDLE
+    private var sectionMin=0f
+    private var sectionMax=0f
+    private enum class SectionState { IDLE, PICKING, ACTIVE }
     private var loadedName: String?=null
     private var generation=0
 
@@ -84,6 +92,35 @@ class MainActivity : Activity() {
         headerLayout.addView(name); root.addView(headerLayout)
         val viewport=FrameLayout(this)
         model=ModelView(this) { message -> if(!isDestroyed)showError(message) }; viewport.addView(model)
+        model.onSectionPicked={ pick,min,max -> onSectionPicked(pick,min,max) }
+        pickHint=text("Tap a face to place the cut plane",13,Color.WHITE).apply {
+            gravity=Gravity.CENTER; visibility=View.GONE
+            background=GradientDrawable().apply { setColor(0xcc10171f.toInt()); cornerRadius=dp(18).toFloat() }
+            setPadding(dp(16),dp(10),dp(16),dp(10))
+        }
+        viewport.addView(pickHint,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin=dp(12) })
+        sectionPanel=LinearLayout(this).apply {
+            gravity=Gravity.CENTER_VERTICAL; visibility=View.GONE
+            background=GradientDrawable().apply { setColor(0xff1d2a35.toInt()); cornerRadius=dp(14).toFloat() }
+            setPadding(dp(14),dp(8),dp(14),dp(8))
+        }
+        sectionPanel.addView(text("Cut",14,Color.WHITE).apply { setTypeface(null,Typeface.BOLD) })
+        sectionSeek=SeekBar(this).apply {
+            max=1000
+            progressTintList=ColorStateList.valueOf(MINT)
+            thumbTintList=ColorStateList.valueOf(MINT)
+            setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seek: SeekBar?,progress: Int,fromUser: Boolean) {
+                    if(!fromUser || sectionState!=SectionState.ACTIVE)return
+                    model.setSectionOffset(sectionMin+progress/1000f*(sectionMax-sectionMin))
+                }
+                override fun onStartTrackingTouch(seek: SeekBar?) {}
+                override fun onStopTrackingTouch(seek: SeekBar?) {}
+            })
+        }
+        sectionPanel.addView(sectionSeek,LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(12); marginEnd=dp(12) })
+        sectionPanel.addView(button("Done",false).apply { setOnClickListener { endSection() } },LinearLayout.LayoutParams(-2,dp(44)))
+        viewport.addView(sectionPanel,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM).apply { marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(12) })
         empty=column().apply { gravity=Gravity.CENTER; setPadding(dp(28),0,dp(28),0) }
         empty.addView(ImageView(this).apply { setImageResource(R.drawable.ic_app) },LinearLayout.LayoutParams(dp(108),dp(108)))
         empty.addView(text("Your model, in 3D",24,Color.WHITE).apply { setTypeface(null,Typeface.BOLD); gravity=Gravity.CENTER })
@@ -102,7 +139,9 @@ class MainActivity : Activity() {
         val actions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         actions.addView(button("Open model",true).apply { setOnClickListener { openFile(false) } },LinearLayout.LayoutParams(0,dp(52),1f))
         reset=button("Reset view",false).apply { isEnabled=false; setOnClickListener { model.reset() } }
-        actions.addView(reset,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) }); footerLayout.addView(actions)
+        actions.addView(reset,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) })
+        sectionButton=button("Section",false).apply { isEnabled=false; setOnClickListener { onSectionButton() } }
+        actions.addView(sectionButton,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) }); footerLayout.addView(actions)
         browseButton=button("Browse folder",false).apply { setOnClickListener { openFolder() } }
         footerLayout.addView(browseButton,LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(8) })
         root.addView(footerLayout); setContentView(root); root.requestApplyInsets(); adaptLayout(resources.configuration)
@@ -118,6 +157,39 @@ class MainActivity : Activity() {
         name.visibility=visibility; gestureHelp.visibility=visibility; browseButton.visibility=visibility
         headerLayout.setPadding(dp(24),dp(if(compact)4 else 20),dp(24),dp(if(compact)4 else 14))
         footerLayout.setPadding(dp(20),dp(if(compact)4 else 12),dp(20),dp(if(compact)4 else 16))
+    }
+    // Cross-section analysis: Section arms face picking, the picked face
+    // places the cut plane, the slider moves it, and Done turns the clip
+    // off without touching the loaded model. Tapping a face while the
+    // panel is open re-places the plane.
+    private fun onSectionButton() {
+        if(sectionState==SectionState.IDLE) {
+            sectionState=SectionState.PICKING
+            model.setSectionPicking(true)
+            pickHint.visibility=View.VISIBLE
+            sectionButton.text="Cancel"
+        } else endSection()
+    }
+    private fun onSectionPicked(pick: SectionClip.Pick?,min: Float,max: Float) {
+        if(sectionState==SectionState.IDLE)return
+        if(pick==null) {
+            Toast.makeText(this,"No face there. Tap a face on the model.",Toast.LENGTH_SHORT).show()
+            return
+        }
+        sectionMin=min; sectionMax=max
+        sectionState=SectionState.ACTIVE
+        pickHint.visibility=View.GONE
+        sectionPanel.visibility=View.VISIBLE
+        sectionButton.text="Section"
+        val offset=pick.normal[0]*pick.point[0]+pick.normal[1]*pick.point[1]+pick.normal[2]*pick.point[2]
+        sectionSeek.progress=if(sectionMax>sectionMin)((offset-sectionMin)/(sectionMax-sectionMin)*1000f).roundToInt().coerceIn(0,1000) else 500
+    }
+    private fun endSection() {
+        sectionState=SectionState.IDLE
+        model.clearSection()
+        pickHint.visibility=View.GONE
+        sectionPanel.visibility=View.GONE
+        sectionButton.text="Section"
     }
     private fun openFile(showAll: Boolean) {
         val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
@@ -257,6 +329,7 @@ class MainActivity : Activity() {
                         CrashDiagnostics.stage("Uploading model to renderer")
                         model.show(mesh); model.restore(camera)
                         empty.visibility=View.GONE; loading.visibility=View.GONE; reset.isEnabled=true
+                        sectionButton.isEnabled=true; endSection()
                     } catch(_: IOException) { showError("Could not save a local copy of this model.") }
                 }
                 temporary=null // UI callback now owns the temporary file.
