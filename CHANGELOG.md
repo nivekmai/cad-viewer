@@ -1,9 +1,16 @@
 # Changelog
 
+## 1.8.0
+
+- Added ASCII and binary PLY meshes and point clouds, preserving vertex colors with disk-backed geometry buffers.
+- Cache converted CAD models on disk using source content fingerprints so reopening an unchanged file skips conversion.
+- Pipeline four converter bridge chunks and allow five minutes for large CAD conversions.
+
 ## 1.7.1
 
 - Added Flip beside the section slider to switch the visible half of the model without moving the cut plane or reloading geometry.
 - The slider keeps its position and direction after flipping; new sections start on the original side.
+
 
 ## 1.7.0
 

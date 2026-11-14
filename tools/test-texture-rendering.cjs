@@ -24,10 +24,10 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(base+i*20,true)/254-1,v.getFloat32(base+4+i*20,true)/254-1,0);uv.push(v.getFloat32(base+12+i*20,true),v.getFloat32(base+16+i*20,true));}
   // Same interleaved position/normal/UV layout as GeometryBatch and ModelView.
   // Tiny capacity deliberately forces multiple uploads for the fixture.
-  const capacity=3,staging=new Float32Array(capacity*8),buffer=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,capacity*32,gl.STREAM_DRAW);
-  for(const [name,size,offset] of [['aPosition',3,0],['aNormal',3,12],['aUv',2,24]]) {
-    const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,offset);gl.enableVertexAttribArray(loc);
+  const capacity=3,staging=new Float32Array(capacity*12),buffer=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,capacity*48,gl.STREAM_DRAW);
+  for(const [name,size,offset] of [['aPosition',3,0],['aNormal',3,12],['aUv',2,24],['aColor',4,32]]) {
+    const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,48,offset);gl.enableVertexAttribArray(loc);
   }
   const identity=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
   gl.uniformMatrix4fv(gl.getUniformLocation(program,'uMvp'),false,identity);
@@ -44,8 +44,8 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   let first=0,count=0;for(let i=0;i<batches;i++)if(v.getInt32(batchOffset+i*36+24,true)===0){first=v.getInt32(batchOffset+i*36,true);count=v.getInt32(batchOffset+i*36+4,true);}
   function draw(){gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);for(let offset=first;offset<first+count;offset+=capacity) {
     const n=Math.min(capacity,first+count-offset);
-    for(let i=0;i<n;i++){const v=offset+i;staging.set([xyz[v*3],xyz[v*3+1],xyz[v*3+2],0,0,1,uv[v*2],uv[v*2+1]],i*8);}
-    gl.bufferSubData(gl.ARRAY_BUFFER,0,staging.subarray(0,n*8));gl.drawArrays(gl.TRIANGLES,0,n);gl.finish();
+    for(let i=0;i<n;i++){const v=offset+i;staging.set([xyz[v*3],xyz[v*3+1],xyz[v*3+2],0,0,1,uv[v*2],uv[v*2+1],0,1,0,1],i*12);}
+    gl.bufferSubData(gl.ARRAY_BUFFER,0,staging.subarray(0,n*12));gl.drawArrays(gl.TRIANGLES,0,n);gl.finish();
   }if(gl.getError()!==gl.NO_ERROR)throw Error('GL render error');const px=new Uint8Array(256*256*4);gl.readPixels(0,0,256,256,gl.RGBA,gl.UNSIGNED_BYTE,px);return px;}
   const textured=draw();let red=0,white=0;
   for(let i=0;i<textured.length;i+=4){if(textured[i]>textured[i+1]*1.5&&textured[i]>textured[i+2]*1.5)red++;if(textured[i]>180&&Math.abs(textured[i]-textured[i+1])<5&&Math.abs(textured[i]-textured[i+2])<5)white++;}
@@ -68,8 +68,13 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const moved=draw();const movedPixels=[sample(moved,192),sample(moved,248)];
   gl.uniform4f(gl.getUniformLocation(program,'uClipPlane'),1,0,0,-.25);uniform('uClipSign',1);
   const restored=draw();const twiceRestores=restored.every((n,i)=>n===original[i]);
-  return {red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
+  uniform('uClipEnabled',0);uniform('uColored',1);
+  const colored=draw();const vertexColor=Array.from(colored.slice(center,center+4));
+  uniform('uColored',0);const resetColor=Array.from(draw().slice(center,center+4));
+  return {vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
  },{vertex,fragment,bytes:Array.from(bytes)});
+ assert.ok(result.vertexColor[0]===0 && result.vertexColor[1]>100 && result.vertexColor[2]===0,JSON.stringify(result));
+ assert.ok(result.resetColor[0]>100 && result.resetColor[1]===0,JSON.stringify(result));
  assert.ok(result.red>100&&result.white>100,JSON.stringify(result));
  assert.ok(result.solidColor[0]>100&&result.solidColor[1]===0&&result.solidColor[2]===0);
  assert.ok(Math.abs(result.alphaColor[0]-result.solidColor[0]*128/255)<3,JSON.stringify(result));

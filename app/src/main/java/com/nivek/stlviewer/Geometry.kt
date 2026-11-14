@@ -42,10 +42,11 @@ class Geometry {
         if (skipped.isNotEmpty()) it.notice = "Not displayed: ${skipped.joinToString(", ")}."
     }
     // Ear clipping in the dominant plane preserves concave faces.
-    fun polygon(input: List<DoubleArray>) {
+    fun polygon(input: List<DoubleArray>) = polygon(input, ::triangle)
+    fun polygon(input: List<DoubleArray>, emit: (DoubleArray, DoubleArray, DoubleArray) -> Unit) {
         val p = input.toMutableList()
         if (p.size > 3 && p.first().contentEquals(p.last())) p.removeAt(p.lastIndex)
-        if (p.size !in 3..4096) throw IOException("Invalid or excessively complex polygon.")
+        if (p.size < 3) throw IOException("Invalid or excessively complex polygon.")
         val normal = DoubleArray(3)
         for (i in p.indices) {
             val a = p[i]; val b = p[(i + 1) % p.size]
@@ -77,11 +78,11 @@ class Geometry {
                 val inside = p.any { q -> q !== a && q !== b && q !== c &&
                     cross(a, b, q, x, y) * sign >= -epsilon && cross(b, c, q, x, y) * sign >= -epsilon &&
                     cross(c, a, q, x, y) * sign >= -epsilon }
-                if (!inside) { triangle(a, b, c); p.removeAt(i); found = true; break }
+                if (!inside) { emit(a, b, c); p.removeAt(i); found = true; break }
             }
             if (!found) throw IOException("A polygon is self-intersecting or cannot be triangulated.")
         }
-        triangle(p[0], p[1], p[2])
+        emit(p[0], p[1], p[2])
     }
     companion object {
         // Respect JVM indexing capacity without a policy limit on model complexity.

@@ -63,10 +63,14 @@ class LocalCadEngine(private val activity: Activity) {
         }
         var success=false
         try {
-            return result.get(120,TimeUnit.SECONDS).also { success=true }
+            // A large SketchUp file can take minutes to parse in the
+            // WebView reader on a phone; the converted output is cached
+            // on disk afterwards, so only the first load pays that cost.
+            // Five minutes keeps that first load from timing out.
+            return result.get(300,TimeUnit.SECONDS).also { success=true }
         } catch(_: InterruptedException) {
             Thread.currentThread().interrupt(); throw InterruptedIOException("$label loading cancelled.")
-        } catch(_: TimeoutException) { throw IOException("$label processing exceeded two minutes. Try a smaller model.") }
+        } catch(_: TimeoutException) { throw IOException("$label processing exceeded five minutes. Try a smaller model.") }
           catch(e: ExecutionException) { throw IOException(e.cause?.message,e.cause) }
         finally {
             result.cancel(false); bridge.close()

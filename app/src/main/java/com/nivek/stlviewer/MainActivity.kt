@@ -137,7 +137,7 @@ class MainActivity : Activity() {
         loading.addView(cancel,LinearLayout.LayoutParams(dp(140),dp(48)).apply { topMargin=dp(20) })
         viewport.addView(loading,FrameLayout.LayoutParams(-1,-1)); root.addView(viewport,LinearLayout.LayoutParams(-1,0,1f))
         footerLayout=column().apply { setPadding(dp(20),dp(12),dp(20),dp(16)) }
-        detail=text("STL · OBJ · 3MF · DXF · SCAD · STEP · DWG · SKP",12,MUTED).apply { gravity=Gravity.CENTER }; footerLayout.addView(detail)
+        detail=text("PLY · STL · OBJ · 3MF · DXF · SCAD · STEP · DWG · SKP",12,MUTED).apply { gravity=Gravity.CENTER }; footerLayout.addView(detail)
         notice=text("",12,0xffffd28a.toInt()).apply { gravity=Gravity.CENTER; visibility=View.GONE }; footerLayout.addView(notice)
         gestureHelp=text("Drag to rotate · Two fingers to pan\nPinch to zoom · Double tap to reset",13,MUTED).apply { gravity=Gravity.CENTER; setPadding(0,dp(10),0,dp(16)) }; footerLayout.addView(gestureHelp)
         val actions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
@@ -249,7 +249,7 @@ class MainActivity : Activity() {
                     if(parents.isNotEmpty())labels.add("↑ Parent folder")
                     entries.forEach { labels.add(if(it.directory)"▸ ${it.title}" else it.title) }
                     val dialog=AlertDialog.Builder(this).setTitle("Choose a model").setNegativeButton("Cancel",null)
-                    if(labels.isEmpty())dialog.setMessage("No STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, or SKP files in this folder.")
+                    if(labels.isEmpty())dialog.setMessage("No PLY, STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, or SKP files in this folder.")
                     else dialog.setItems(labels.toTypedArray()) { _,index ->
                         if(parents.isNotEmpty() && index==0)browseFolder(tree,parents.last(),parents.dropLast(1))
                         else {
@@ -301,22 +301,7 @@ class MainActivity : Activity() {
                     }
                 }
                 val mesh=if(ModelParser.needsEngine(displayName)) {
-                    val type=ModelParser.extension(displayName)
-                    CrashDiagnostics.stage("Converting $type")
-                    val status=when(type) { "scad"->"Compiling SCAD on your phone…"; "skp"->"Reading SketchUp on your phone…"; "dwg"->"Reading DWG on your phone…"; else->"Preparing STEP surfaces…" }
-                    runOnUiThread { if(job==generation)loadingText.text=status }
-                    val compiled=LocalCadEngine(this).convert(source,type)
-                    CrashDiagnostics.stage("Preparing $type render geometry")
-                    try {
-                        ModelParser.read(compiled.file,"compiled.${compiled.format}").also { mesh ->
-                            if(compiled.units.isNotEmpty())mesh.units=compiled.units
-                            if(type=="dwg")mesh.notice=mesh.notice.replace("DXF","DWG")
-                            if(compiled.notice.isNotEmpty())mesh.notice+=(if(mesh.notice.isEmpty())"" else "\n\n")+compiled.notice
-                        }
-                    } catch(e: IOException) {
-                        if(type=="dwg" && e.message!=null)throw IOException(e.message!!.replace("DXF","DWG"),e)
-                        throw e
-                    } finally { compiled.file.delete() }
+                    loadConverted(ModelParser.extension(displayName),source,displayName,job)
                 } else ModelParser.read(source,displayName)
                 if(Thread.currentThread().isInterrupted)return@submit
                 val finalName=displayName; val finalSource=source
@@ -325,7 +310,7 @@ class MainActivity : Activity() {
                     try {
                         if(uri!=null)Files.move(finalSource.toPath(),cachedModel().toPath(),StandardCopyOption.REPLACE_EXISTING)
                         loadedName=finalName; name.text=finalName
-                        val primitives=if(mesh.segments>0)String.format(Locale.getDefault(),"%,d triangles · %,d lines",mesh.triangles,mesh.segments) else String.format(Locale.getDefault(),"%,d triangles",mesh.triangles)
+                        val primitives=if(mesh.pointCount>0)String.format(Locale.getDefault(),"%,d points",mesh.pointCount) else if(mesh.segments>0)String.format(Locale.getDefault(),"%,d triangles · %,d lines",mesh.triangles,mesh.segments) else String.format(Locale.getDefault(),"%,d triangles",mesh.triangles)
                         detail.text=String.format(Locale.getDefault(),"%s · %s × %s × %s %s",primitives,dimension(mesh.width),dimension(mesh.depth),dimension(mesh.height),mesh.units)
                         notice.text=if(mesh.notice.isEmpty())"" else "Viewing notes · Details"
                         notice.visibility=if(mesh.notice.isEmpty())View.GONE else View.VISIBLE
@@ -333,7 +318,7 @@ class MainActivity : Activity() {
                         CrashDiagnostics.stage("Uploading model to renderer")
                         model.show(mesh); model.restore(camera)
                         empty.visibility=View.GONE; loading.visibility=View.GONE; reset.isEnabled=true
-                        sectionButton.isEnabled=true; endSection()
+                        sectionButton.isEnabled=mesh.triangles>0 || mesh.resources.isNotEmpty(); endSection()
                     } catch(_: IOException) { showError("Could not save a local copy of this model.") }
                 }
                 temporary=null // UI callback now owns the temporary file.
@@ -343,6 +328,49 @@ class MainActivity : Activity() {
                 if(!Thread.currentThread().isInterrupted)runOnUiThread { if(job==generation && !isDestroyed)showError(e.message ?: "This model could not be opened.") }
             } finally { temporary?.delete() }
         }
+    }
+    // Loads a model that needs the CAD engine (SKP, STEP, DWG, SCAD).
+    // The converted output for a source is kept on disk, because
+    // converting a large SketchUp file costs minutes in the WebView
+    // reader while the output is deterministic for a given source. A
+    // repeat load of the same source reads the saved conversion instead
+    // of converting again. A corrupt cache entry falls back to a full
+    // conversion instead of blocking the model.
+    private fun loadConverted(type: String,source: File,displayName: String,job: Int): StlParser.Mesh {
+        val cached=CompiledModelCache.lookup(filesDir,source,displayName)
+        if(cached!=null) {
+            try {
+                CrashDiagnostics.stage("Loading saved $type conversion")
+                runOnUiThread { if(job==generation)loadingText.text="Opening saved model…" }
+                return ModelParser.read(cached.file,"cached.${cached.format}").also { mesh ->
+                    if(cached.units.isNotEmpty())mesh.units=cached.units
+                    mesh.notice=cached.notice
+                }
+            } catch(e: IOException) {
+                CompiledModelCache.invalidate(filesDir)
+            }
+        }
+        CrashDiagnostics.stage("Converting $type")
+        val status=when(type) { "scad"->"Compiling SCAD on your phone…"; "skp"->"Reading SketchUp on your phone…"; "dwg"->"Reading DWG on your phone…"; else->"Preparing STEP surfaces…" }
+        runOnUiThread { if(job==generation)loadingText.text=status }
+        val compiled=LocalCadEngine(this).convert(source,type)
+        CrashDiagnostics.stage("Preparing $type render geometry")
+        var parsed=false
+        try {
+            return ModelParser.read(compiled.file,"compiled.${compiled.format}").also { mesh ->
+                if(compiled.units.isNotEmpty())mesh.units=compiled.units
+                if(type=="dwg")mesh.notice=mesh.notice.replace("DXF","DWG")
+                if(compiled.notice.isNotEmpty())mesh.notice+=(if(mesh.notice.isEmpty())"" else "\n\n")+compiled.notice
+                parsed=true
+                // Keep the converted file as the disk cache for the next
+                // load of this source. The parsed mesh memory-maps it,
+                // so it is moved (rename) rather than copied.
+                if(!CompiledModelCache.store(filesDir,compiled.file,source,displayName,compiled.format,compiled.units,mesh.notice))compiled.file.delete()
+            }
+        } catch(e: IOException) {
+            if(type=="dwg" && e.message!=null)throw IOException(e.message!!.replace("DXF","DWG"),e)
+            throw e
+        } finally { if(!parsed)compiled.file.delete() }
     }
     private fun dimension(value: Double)=String.format(Locale.getDefault(),"%.3g",value)
     private fun showDiagnostics() {
@@ -383,7 +411,7 @@ class MainActivity : Activity() {
         private val INK=0xff10171f.toInt()
         private val MUTED=0xff97a8b9.toInt()
         private val MINT=0xff71e4c5.toInt()
-        private const val SUPPORTED_FORMATS="STL, OBJ, 3MF, ASCII DXF, SCAD, STEP/STP, DWG, and SketchUp (SKP).\n\nSketchUp shows triangulated surfaces with component placements. Material colors and embedded PNG/JPEG textures are displayed. Projected texture mapping and overlapping transparency may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some SketchUp versions or features may not import correctly.\n\nSTEP solids and surfaces are converted to a shaded preview. DWG shows supported drawing geometry; proprietary 3D solids, proxy objects, external references, and hatches are not rendered.\n\nDXF/DWG text, multiline notes, visible block attributes, and dimensions with saved drawing blocks are displayed. Text uses a substitute outline font; rich styling, background masks, and exact spacing may differ. Use Top view to read plans.\n\nSCAD scripts run offline and must be self-contained or use the bundled MCAD library.\n\nFormats other than SketchUp use a single surface color. Viewing notes identify omitted content.\n\nIf a file is missing from the picker, try Show all files or Browse folder."
+        private const val SUPPORTED_FORMATS="PLY, STL, OBJ, 3MF, ASCII DXF, SCAD, STEP/STP, DWG, and SketchUp (SKP).\n\nSketchUp shows triangulated surfaces with component placements. Material colors and embedded PNG/JPEG textures are displayed. Projected texture mapping and overlapping transparency may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some SketchUp versions or features may not import correctly.\n\nSTEP solids and surfaces are converted to a shaded preview. DWG shows supported drawing geometry; proprietary 3D solids, proxy objects, external references, and hatches are not rendered.\n\nDXF/DWG text, multiline notes, visible block attributes, and dimensions with saved drawing blocks are displayed. Text uses a substitute outline font; rich styling, background masks, and exact spacing may differ. Use Top view to read plans.\n\nSCAD scripts run offline and must be self-contained or use the bundled MCAD library.\n\nPLY supports ASCII and binary meshes and point clouds, including vertex RGB/alpha colors. Formats other than SketchUp and PLY use a single surface color. Viewing notes identify omitted content.\n\nIf a file is missing from the picker, try Show all files or Browse folder."
         private val SUPPORTED_MIMES=arrayOf(
             "model/stl","application/sla","application/vnd.ms-pki.stl","application/x-stl","application/stl","application/x-navistyle",
             "model/obj","application/x-wavefront-obj","application/x-tgif","text/x-obj",
@@ -392,6 +420,7 @@ class MainActivity : Activity() {
             "application/dxf","application/x-dxf","image/vnd.dxf","image/x-dxf","drawing/x-dxf",
             // Android providers also label .skp using historical Koan MIME types.
             "application/vnd.koan","application/x-koan",
+            "model/ply","application/ply","application/x-ply",
             "application/vnd.sketchup.skp","application/x-sketchup","application/x-skp",
             "model/step","application/step","application/x-step","application/x-stp","text/x-step",
             "image/vnd.dwg","image/x-dwg","application/acad","application/x-acad","application/dwg","application/x-dwg",

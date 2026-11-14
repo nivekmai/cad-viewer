@@ -106,7 +106,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         var clipEnabled=false
         var clipPlane=FloatArray(4)
         private var program=0; private var position=0; private var normal=0; private var mvpLocation=0; private var normalMatrixLocation=0; private var unlitLocation=0
-        private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
+        private var vertexColorLocation=0; private var coloredLocation=0; private var uvLocation=0; private var colorLocation=0; private var texturedLocation=0; private var samplerLocation=0; private var cutoffLocation=0
         private var localLocation=0; private var clipPlaneLocation=0; private var clipEnabledLocation=0; private var clipSignLocation=0
         private val identity=FloatArray(16).apply { Matrix.setIdentityM(this,0) }
         private var whiteTexture=0
@@ -134,15 +134,16 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             uploadedInstancedMesh=null; instancedVbos=IntArray(0)
             val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
-            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*32,null,GLES20.GL_STREAM_DRAW)
-            val vertex="uniform mat4 uMvp; uniform mat4 uLocal; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); vNormal=uNormalMatrix*aNormal; vUv=aUv; vModelPos=(uLocal*vec4(aPosition,1.0)).xyz; }"
-            val fragment="precision mediump float; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform float uClipSign; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && (dot(vModelPos,uClipPlane.xyz)+uClipPlane.w)*uClipSign>0.0)discard; if(uUnlit>0.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*48,null,GLES20.GL_STREAM_DRAW)
+            val vertex="uniform mat4 uMvp; uniform mat4 uLocal; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; attribute vec4 aColor; varying vec4 vColor; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); gl_PointSize=3.0; vColor=aColor; vNormal=uNormalMatrix*aNormal; vUv=aUv; vModelPos=(uLocal*vec4(aPosition,1.0)).xyz; }"
+            val fragment="precision mediump float; varying vec4 vColor; uniform float uColored; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform float uClipSign; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && (dot(vModelPos,uClipPlane.xyz)+uClipPlane.w)*uClipSign>0.0)discard; if(uUnlit>0.5 && uUnlit<1.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uColored>0.5)base=vColor; if(uUnlit>1.5){gl_FragColor=base;return;} if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
             program=GLES20.glCreateProgram()
             GLES20.glAttachShader(program,vs); GLES20.glAttachShader(program,fs); GLES20.glLinkProgram(program)
             val ok=IntArray(1); GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,ok,0)
             check(ok[0]!=0) { GLES20.glGetProgramInfoLog(program) }
             GLES20.glDeleteShader(vs); GLES20.glDeleteShader(fs)
+            vertexColorLocation=GLES20.glGetAttribLocation(program,"aColor"); coloredLocation=GLES20.glGetUniformLocation(program,"uColored");
             position=GLES20.glGetAttribLocation(program,"aPosition"); normal=GLES20.glGetAttribLocation(program,"aNormal")
             uvLocation=GLES20.glGetAttribLocation(program,"aUv"); colorLocation=GLES20.glGetUniformLocation(program,"uColor")
             texturedLocation=GLES20.glGetUniformLocation(program,"uTextured"); samplerLocation=GLES20.glGetUniformLocation(program,"uTexture"); cutoffLocation=GLES20.glGetUniformLocation(program,"uCutoff")
@@ -368,6 +369,8 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             Matrix.rotateM(model,0,pitch,1f,0f,0f); Matrix.rotateM(model,0,yaw,0f,0f,1f)
             Matrix.multiplyMM(mvp,0,projection,0,model,0)
             GLES20.glUseProgram(program)
+            GLES20.glUniform1f(coloredLocation,if(mesh.vertexColors!=null)1f else 0f)
+            GLES20.glDisableVertexAttribArray(vertexColorLocation)
             GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
             GLES20.glUniform1f(clipEnabledLocation,if(clipEnabled)1f else 0f)
             GLES20.glUniform1f(clipSignLocation,clipSign)
@@ -385,13 +388,23 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
             if(mesh.triangles>0) {
                 GLES20.glUniform1f(unlitLocation,0f)
-                if(mesh.surfaces.isEmpty())stream(mesh,null,mesh.triangles*3)
+                if(mesh.surfaces.isEmpty()) {
+                    if(mesh.vertexColors!=null) { GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA) }
+                    stream(mesh,null,mesh.triangles*3)
+                    GLES20.glDisable(GLES20.GL_BLEND)
+                }
                 else {
                     stream(mesh,mesh.surfaces.filter { it.flags and 2==0 })
                     GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)
                     stream(mesh,mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) })
                     GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
                 }
+            }
+            if(mesh.pointCount>0) {
+                GLES20.glUniform1f(unlitLocation,2f)
+                GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
+                stream(mesh,null,mesh.pointCount)
+                GLES20.glDisable(GLES20.GL_BLEND)
             }
             if(mesh.segments>0) {
                 GLES20.glUniform1f(unlitLocation,1f)
@@ -403,17 +416,19 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             batch.clear()
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
             GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal); GLES20.glEnableVertexAttribArray(uvLocation)
-            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,32,0)
-            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,32,12)
-            GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,32,24)
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,48,0)
+            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,48,12)
+            GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,48,24)
+            GLES20.glEnableVertexAttribArray(vertexColorLocation)
+            GLES20.glVertexAttribPointer(vertexColorLocation,4,GLES20.GL_FLOAT,false,48,32)
             fun flush() {
                 if(batch.size==0)return
-                val bytes=batch.size*32
+                val bytes=batch.size*48
                 batch.data.flip()
                 GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER,0,bytes,batch.data)
                 for(draw in batch.draws) {
                     draw.surface?.let { drawSurface(it) }
-                    GLES20.glDrawArrays(if(lines)GLES20.GL_LINES else GLES20.GL_TRIANGLES,draw.first,draw.count)
+                    GLES20.glDrawArrays(if(lines)GLES20.GL_LINES else if(mesh.pointCount>0)GLES20.GL_POINTS else GLES20.GL_TRIANGLES,draw.first,draw.count)
                 }
                 // Finish before reusing storage: drivers cannot accumulate model-sized
                 // copies or renamed buffers behind thousands of asynchronous draws.

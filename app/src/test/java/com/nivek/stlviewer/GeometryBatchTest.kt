@@ -18,8 +18,8 @@ class GeometryBatchTest {
         batch.append(mesh,surface.first+3,3,surface)
         assertEquals(6,batch.size); assertEquals(listOf(0,3),batch.draws.map { it.first })
         for(v in 0..5) {
-            for(a in 0..5)assertEquals(mesh.data.get((59994+v)*6+a),batch.data.get(v*8+a),0f)
-            for(a in 0..1)assertEquals(mesh.textureCoordinates!!.get((59994+v)*5+3+a),batch.data.get(v*8+6+a),0f)
+            for(a in 0..5)assertEquals(mesh.data.get((59994+v)*6+a),batch.data.get(v*12+a),0f)
+            for(a in 0..1)assertEquals(mesh.textureCoordinates!!.get((59994+v)*5+3+a),batch.data.get(v*12+6+a),0f)
         }
         assertEquals(0,mesh.data.position()); assertEquals(0,mesh.textureCoordinates!!.position())
     }
@@ -30,15 +30,15 @@ class GeometryBatchTest {
         val storage=batch.data
         batch.clear();batch.append(mesh,32766,3,null)
         assertSame(storage,batch.data);assertEquals(3,batch.size)
-        assertEquals(mesh.data.get(32768*6),batch.data.get(16),0f)
+        assertEquals(mesh.data.get(32768*6),batch.data.get(24),0f)
         assertEquals(1,batch.draws.size)
     }
     @Test fun linesGetPositionsWithoutTextureOrNormalData() {
         val mesh=StlParser.Mesh(FloatArray(0),0,floatArrayOf(0f,0f,0f,1f,1f,1f),6)
         val batch=GeometryBatch(6);batch.append(mesh,0,2,null,true)
         for(v in 0..1) {
-            for(a in 0..2)assertEquals(mesh.lines.get(v*3+a),batch.data.get(v*8+a),0f)
-            for(a in 3..7)assertEquals(0f,batch.data.get(v*8+a),0f)
+            for(a in 0..2)assertEquals(mesh.lines.get(v*3+a),batch.data.get(v*12+a),0f)
+            for(a in 3..7)assertEquals(0f,batch.data.get(v*12+a),0f)
         }
     }
     @Test fun privateModelStreamsAllSurfaceVerticesWhenProvided() {
@@ -53,8 +53,8 @@ class GeometryBatchTest {
                 batch.clear();batch.append(mesh,offset,n,surface)
                 assertEquals(n,batch.size)
                 for(v in intArrayOf(0,n-1)) {
-                    for(a in 0..5)assertEquals(mesh.data.get((offset+v)*6+a),batch.data.get(v*8+a),0f)
-                    for(a in 0..1)assertEquals(mesh.textureCoordinates!!.get((offset+v)*5+3+a),batch.data.get(v*8+6+a),0f)
+                    for(a in 0..5)assertEquals(mesh.data.get((offset+v)*6+a),batch.data.get(v*12+a),0f)
+                    for(a in 0..1)assertEquals(mesh.textureCoordinates!!.get((offset+v)*5+3+a),batch.data.get(v*12+6+a),0f)
                 }
                 total+=n; offset+=n;remaining-=n
             }

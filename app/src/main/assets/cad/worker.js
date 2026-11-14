@@ -124,10 +124,22 @@ self.onmessage = async event => {
     if (!['step', 'stp', 'dwg', 'skp'].includes(type)) throw new Error('Unsupported CAD format.');
     const result = type === 'skp' ? await readSkp(input) : type === 'dwg' ? await readDwg(input) : await readStep(input);
     if(result.chunks) {
+      // Pipeline a few chunks: the bridge (base64 + JNI + file write) is
+      // far slower than encoding, so waiting for an ack per chunk
+      // serializes the whole transfer on bridge latency. Chunks still
+      // arrive in order, and the final message is only sent once every
+      // chunk has been acknowledged, so the app still sees the complete
+      // file before it starts parsing.
+      const PIPELINE=4;
+      let inFlight=0; const waiters=[];
+      const waitForSlot=()=>new Promise(resolve=>{ if(inFlight<PIPELINE)resolve(); else waiters.push(resolve); });
+      chunkAcknowledged=()=>{ inFlight--; const next=waiters.shift(); if(next)next(); };
       for(const chunk of result.chunks) {
-        const delivered=new Promise(resolve=>{chunkAcknowledged=resolve;});
-        self.postMessage({chunk},[chunk.buffer]);await delivered;
+        await waitForSlot();
+        inFlight++;
+        self.postMessage({chunk},[chunk.buffer]);
       }
+      while(inFlight>0)await new Promise(resolve=>waiters.push(resolve));
       chunkAcknowledged=null;
       self.postMessage({format:result.format,units:result.units,notice:result.notice,done:true});
     } else self.postMessage(result, [result.bytes.buffer]);
