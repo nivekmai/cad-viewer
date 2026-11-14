@@ -19,8 +19,6 @@ import android.view.View
 import android.view.WindowInsets
 import android.widget.*
 import java.io.*
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -50,6 +48,8 @@ class MainActivity : Activity() {
     private var sectionMax=0f
     private enum class SectionState { IDLE, PICKING, ACTIVE }
     private var loadedName: String?=null
+    private var loadedId: String?=null
+    private val recentModels by lazy { RecentModels(File(filesDir,"models")) }
     private var generation=0
 
     override fun onCreate(state: Bundle?) {
@@ -75,12 +75,14 @@ class MainActivity : Activity() {
             menu.menu.add(0,2,1,"Supported formats")
             menu.menu.add(0,4,2,"Top view").isEnabled=reset.isEnabled
             menu.menu.add(0,5,3,"Crash diagnostics")
+            menu.menu.add(0,6,0,"Recent models")
             menu.setOnMenuItemClickListener { item ->
                 when(item.itemId) {
                     1 -> openFile(true)
                     3 -> openFolder()
                     4 -> model.topView()
                     5 -> showDiagnostics()
+                    6 -> showRecentModels()
                     else -> AlertDialog.Builder(this).setTitle("Supported formats").setMessage(SUPPORTED_FORMATS).setPositiveButton("OK",null).show()
                 }
                 true
@@ -147,12 +149,18 @@ class MainActivity : Activity() {
         sectionButton=button("Section",false).apply { isEnabled=false; setOnClickListener { onSectionButton() } }
         actions.addView(sectionButton,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) }); footerLayout.addView(actions)
         browseButton=button("Browse folder",false).apply { setOnClickListener { openFolder() } }
-        footerLayout.addView(browseButton,LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(8) })
+        val libraryActions=LinearLayout(this)
+        libraryActions.addView(button("Recent models",false).apply { setOnClickListener { showRecentModels() } },LinearLayout.LayoutParams(0,dp(48),1f))
+        libraryActions.addView(browseButton,LinearLayout.LayoutParams(0,dp(48),1f))
+        footerLayout.addView(libraryActions,LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(8) })
         root.addView(footerLayout); setContentView(root); root.requestApplyInsets(); adaptLayout(resources.configuration)
         val savedName=state?.getString("name")
         val initial=intentUri(intent)
-        if(savedName!=null && cachedModel().isFile)load(null,savedName,state.getFloatArray("camera"))
+        val savedId=state?.getString("modelId")
+        if(savedId!=null)load(null,savedName,state.getFloatArray("camera"),savedId)
+        else if(savedName!=null && cachedModel().isFile)load(null,savedName,state.getFloatArray("camera"))
         else if(initial!=null)load(initial,null,null)
+        else showRecentModels(false)
     }
     override fun onConfigurationChanged(configuration: Configuration) { super.onConfigurationChanged(configuration); adaptLayout(configuration) }
     private fun adaptLayout(configuration: Configuration) {
@@ -271,12 +279,48 @@ class MainActivity : Activity() {
         else -> null
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); intentUri(intent)?.let { load(it,null,null) } }
+    private fun showRecentModels(showEmpty: Boolean=true) {
+        val requestedGeneration=generation
+        loader.submit {
+            val entries=recentModels.list()
+            val total=entries.sumOf { it.bytes }
+            runOnUiThread {
+                if(isDestroyed || requestedGeneration!=generation || (!showEmpty && entries.isEmpty()))return@runOnUiThread
+                val labels=entries.map { entry ->
+                    val status=if(entry.converted)"Conversion saved" else "Saved on device"
+                    "${entry.name}\n$status · ${android.text.format.Formatter.formatFileSize(this,entry.bytes)}"
+                }.toTypedArray()
+                val dialog=AlertDialog.Builder(this).setTitle("Recent models")
+                if(entries.isEmpty())dialog.setMessage("Models you open are saved here for quick access, even without the original file.")
+                else dialog.setItems(labels) { _,index -> load(null,null,null,entries[index].id) }
+                dialog.setPositiveButton("Open file") { _,_ -> openFile(false) }
+                dialog.setNegativeButton("Close",null)
+                if(entries.isNotEmpty())dialog.setNeutralButton("Manage · ${android.text.format.Formatter.formatFileSize(this,total)}") { _,_ ->
+                    AlertDialog.Builder(this).setTitle("Remove saved model").setItems(labels) { _,index ->
+                        val entry=entries[index]
+                        AlertDialog.Builder(this).setTitle("Remove ${entry.name}?")
+                            .setMessage("Removes the local copy and cached conversion. The original file is unaffected.")
+                            .setNegativeButton("Cancel",null).setPositiveButton("Remove") { _,_ ->
+                                loader.submit {
+                                    try { recentModels.remove(entry.id)
+                                        runOnUiThread { if(!isDestroyed) { if(loadedId==entry.id) { loadedId=null;loadedName=null };showRecentModels() } }
+                                    } catch(e: IOException) { runOnUiThread { if(!isDestroyed)showError(e.message ?: "Could not remove saved model.") } }
+                                }
+                            }.show()
+                    }.setNegativeButton("Close",null).show()
+                }
+                dialog.show()
+            }
+        }
+    }
     private fun cachedModel()=File(filesDir,"model.stl")
-    private fun load(uri: Uri?,restoreName: String?,camera: FloatArray?) {
+    private fun load(uri: Uri?,restoreName: String?,camera: FloatArray?,recentId: String?=null) {
         val job=++generation; pending?.cancel(true)
         loadingText.text="Opening model…"; loading.visibility=View.VISIBLE
         pending=loader.submit {
             var temporary: File?=null
+            var entry: RecentModels.Entry?=null
+            var published=false
             try {
                 var displayName=restoreName ?: "Model.stl"
                 var source=cachedModel()
@@ -300,16 +344,24 @@ class MainActivity : Activity() {
                         }
                     }
                 }
+                val saved=if(recentId!=null)recentModels.get(recentId) ?: throw IOException("This saved model is no longer available.") else recentModels.prepare(source,displayName)
+                entry=saved;source=saved.source;displayName=saved.name
+                // Migrate the previous single-entry conversion cache when it matches.
+                if(!saved.converted && recentId==null) {
+                    CompiledModelCache.lookup(filesDir,source,displayName)?.let { old ->
+                        CompiledModelCache.store(saved.directory,old.file,source,displayName,old.format,old.units,old.notice)
+                    }
+                }
                 val mesh=if(ModelParser.needsEngine(displayName)) {
-                    loadConverted(ModelParser.extension(displayName),source,displayName,job)
+                    loadConverted(ModelParser.extension(displayName),source,displayName,job,saved.directory)
                 } else ModelParser.read(source,displayName)
                 if(Thread.currentThread().isInterrupted)return@submit
-                val finalName=displayName; val finalSource=source
+                val finalName=displayName
+                recentModels.touch(saved);published=true
                 runOnUiThread {
-                    if(job!=generation || isDestroyed) { if(uri!=null)finalSource.delete(); return@runOnUiThread }
+                    if(job!=generation || isDestroyed)return@runOnUiThread
                     try {
-                        if(uri!=null)Files.move(finalSource.toPath(),cachedModel().toPath(),StandardCopyOption.REPLACE_EXISTING)
-                        loadedName=finalName; name.text=finalName
+                        loadedId=saved.id;loadedName=finalName; name.text=finalName
                         val primitives=if(mesh.pointCount>0)String.format(Locale.getDefault(),"%,d points",mesh.pointCount) else if(mesh.segments>0)String.format(Locale.getDefault(),"%,d triangles · %,d lines",mesh.triangles,mesh.segments) else String.format(Locale.getDefault(),"%,d triangles",mesh.triangles)
                         detail.text=String.format(Locale.getDefault(),"%s · %s × %s × %s %s",primitives,dimension(mesh.width),dimension(mesh.depth),dimension(mesh.height),mesh.units)
                         notice.text=if(mesh.notice.isEmpty())"" else "Viewing notes · Details"
@@ -321,12 +373,11 @@ class MainActivity : Activity() {
                         sectionButton.isEnabled=mesh.triangles>0 || mesh.resources.isNotEmpty(); endSection()
                     } catch(_: IOException) { showError("Could not save a local copy of this model.") }
                 }
-                temporary=null // UI callback now owns the temporary file.
             } catch(_: OutOfMemoryError) {
                 runOnUiThread { if(job==generation && !isDestroyed)showError("This model is too large for the available memory. Please try a smaller file.") }
             } catch(e: Exception) {
                 if(!Thread.currentThread().isInterrupted)runOnUiThread { if(job==generation && !isDestroyed)showError(e.message ?: "This model could not be opened.") }
-            } finally { temporary?.delete() }
+            } finally { temporary?.delete();if(!published)entry?.let { recentModels.discardUnpublished(it) } }
         }
     }
     // Loads a model that needs the CAD engine (SKP, STEP, DWG, SCAD).
@@ -336,8 +387,8 @@ class MainActivity : Activity() {
     // repeat load of the same source reads the saved conversion instead
     // of converting again. A corrupt cache entry falls back to a full
     // conversion instead of blocking the model.
-    private fun loadConverted(type: String,source: File,displayName: String,job: Int): StlParser.Mesh {
-        val cached=CompiledModelCache.lookup(filesDir,source,displayName)
+    private fun loadConverted(type: String,source: File,displayName: String,job: Int,cacheDirectory: File): StlParser.Mesh {
+        val cached=CompiledModelCache.lookup(cacheDirectory,source,displayName)
         if(cached!=null) {
             try {
                 CrashDiagnostics.stage("Loading saved $type conversion")
@@ -347,7 +398,7 @@ class MainActivity : Activity() {
                     mesh.notice=cached.notice
                 }
             } catch(e: IOException) {
-                CompiledModelCache.invalidate(filesDir)
+                CompiledModelCache.invalidate(cacheDirectory)
             }
         }
         CrashDiagnostics.stage("Converting $type")
@@ -365,7 +416,7 @@ class MainActivity : Activity() {
                 // Keep the converted file as the disk cache for the next
                 // load of this source. The parsed mesh memory-maps it,
                 // so it is moved (rename) rather than copied.
-                if(!CompiledModelCache.store(filesDir,compiled.file,source,displayName,compiled.format,compiled.units,mesh.notice))compiled.file.delete()
+                if(!CompiledModelCache.store(cacheDirectory,compiled.file,source,displayName,compiled.format,compiled.units,mesh.notice))compiled.file.delete()
             }
         } catch(e: IOException) {
             if(type=="dwg" && e.message!=null)throw IOException(e.message!!.replace("DXF","DWG"),e)
@@ -392,6 +443,7 @@ class MainActivity : Activity() {
     }
     override fun onSaveInstanceState(state: Bundle) {
         super.onSaveInstanceState(state)
+        loadedId?.let { state.putString("modelId",it) }
         loadedName?.let { state.putString("name",it); state.putFloatArray("camera",model.camera()) }
     }
     override fun onResume() { super.onResume(); model.onResume() }

@@ -22,7 +22,7 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const vertices=v.getInt32(4,true),batches=v.getInt32(8,true);
   const xyz=[],uv=[];
   for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(base+i*20,true)/254-1,v.getFloat32(base+4+i*20,true)/254-1,0);uv.push(v.getFloat32(base+12+i*20,true),v.getFloat32(base+16+i*20,true));}
-  // Same interleaved position/normal/UV layout as GeometryBatch and ModelView.
+  // Reference streaming layout for pixel comparisons against retained buffers.
   // Tiny capacity deliberately forces multiple uploads for the fixture.
   const capacity=3,staging=new Float32Array(capacity*12),buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,capacity*48,gl.STREAM_DRAW);
@@ -89,9 +89,24 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   uniform('uClipEnabled',1);uniform('uClipSign',1);const packedCut=residentDraw();
   uniform('uClipSign',-1);const packedFlip=residentDraw();
   const packedClipping=[packedCut[(128*256+64)*4+1],packedCut[(128*256+192)*4+1],packedFlip[(128*256+64)*4+1],packedFlip[(128*256+192)*4+1]];
-  if(gl.getError()!==gl.NO_ERROR)throw Error('Retained PLY render error');
-  return {packedMatches,packedClipping,vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
+  // Textured non-instanced geometry uses the same retained path, with UVs.
+  const withUvs=new ArrayBuffer(count*36),uvView=new DataView(withUvs);
+  for(let i=0;i<count;i++) {
+    new Uint8Array(withUvs,i*36,28).set(new Uint8Array(packed,i*28,28));
+    uvView.setFloat32(i*36+28,uv[(first+i)*2],true);uvView.setFloat32(i*36+32,uv[(first+i)*2+1],true);
+  }
+  gl.bufferData(gl.ARRAY_BUFFER,new Uint8Array(withUvs),gl.STATIC_DRAW);
+  for(const [name,size,offset,type,normalized] of [['aPosition',3,0,gl.FLOAT,false],['aNormal',3,12,gl.FLOAT,false],['aColor',4,24,gl.UNSIGNED_BYTE,true],['aUv',2,28,gl.FLOAT,false]]) {
+    const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,type,normalized,36,offset);gl.enableVertexAttribArray(loc);
+  }
+  uniform('uClipEnabled',0);uniform('uColored',0);uniform('uTextured',1);uniform('uCutoff',.5);
+  gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
+  const retainedTexture=residentDraw();const textureMatches=retainedTexture.every((n,i)=>n===textured[i]);
+  if(gl.getError()!==gl.NO_ERROR)throw Error('Retained geometry render error');
+  return {textureMatches,packedMatches,packedClipping,vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
  },{vertex,fragment,bytes:Array.from(bytes)});
+ assert.ok(result.textureMatches,JSON.stringify(result));
  assert.ok(result.packedMatches,JSON.stringify(result));
  assert.ok(result.packedClipping[0]>100 && result.packedClipping[1]===0 && result.packedClipping[2]===0 && result.packedClipping[3]>100,JSON.stringify(result));
  assert.ok(result.vertexColor[0]===0 && result.vertexColor[1]>100 && result.vertexColor[2]===0,JSON.stringify(result));

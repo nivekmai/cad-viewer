@@ -152,7 +152,6 @@ object PlyParser {
                     }
                 }
                 StlParser.Mesh(FloatArray(0),if(faceCount>0)(total*3).toInt() else 0,prepared=StlParser.Prepared(mapping(render,render.length()).asFloatBuffer(),dimensions)).also {
-                    it.residentGeometry=true
                     if(colored)it.vertexColors=mapping(colors,colors.length()).asFloatBuffer()
                     if(faceCount==0)it.pointCount=vertex.count
                 }

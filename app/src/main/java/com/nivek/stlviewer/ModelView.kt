@@ -111,6 +111,8 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private val identity=FloatArray(16).apply { Matrix.setIdentityM(this,0) }
         private var whiteTexture=0
         private var geometryBuffer=0
+        private val batch by lazy { GeometryBatch() }
+        private var fallbackMesh: StlParser.Mesh?=null
         private var instancedVbos=IntArray(0)
         private var uploadedInstancedMesh: StlParser.Mesh?=null
         private val resident=ResidentGeometry(object: ResidentGeometry.Gpu {
@@ -133,7 +135,6 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             }
             override fun delete(id: Int) { GLES20.glDeleteBuffers(1,intArrayOf(id),0) }
         })
-        private val batch=GeometryBatch()
         private var uploadedMesh: StlParser.Mesh?=null
         private var textureIds=IntArray(0)
         private val model=FloatArray(16); private val projection=FloatArray(16); private val mvp=FloatArray(16)
@@ -152,10 +153,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,java.nio.ByteBuffer.allocateDirect(4).apply { putInt(-1);position(0) })
             uploadedMesh=null; textureIds=IntArray(0) // GL names cannot survive context loss.
             uploadedInstancedMesh=null; instancedVbos=IntArray(0)
-            resident.forgetContext()
-            val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
-            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*48,null,GLES20.GL_STREAM_DRAW)
+            resident.forgetContext();fallbackMesh=null;geometryBuffer=0
             val vertex="uniform mat4 uMvp; uniform mat4 uLocal; uniform mat3 uNormalMatrix; attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUv; attribute vec4 aColor; varying vec4 vColor; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ gl_Position=uMvp*vec4(aPosition,1.0); gl_PointSize=3.0; vColor=aColor; vNormal=uNormalMatrix*aNormal; vUv=aUv; vModelPos=(uLocal*vec4(aPosition,1.0)).xyz; }"
             val fragment="precision mediump float; varying vec4 vColor; uniform float uColored; uniform float uUnlit; uniform vec4 uColor; uniform float uTextured; uniform sampler2D uTexture; uniform float uCutoff; uniform float uClipEnabled; uniform float uClipSign; uniform vec4 uClipPlane; varying vec3 vNormal; varying vec2 vUv; varying vec3 vModelPos; void main(){ if(uClipEnabled>0.5 && (dot(vModelPos,uClipPlane.xyz)+uClipPlane.w)*uClipSign>0.0)discard; if(uUnlit>0.5 && uUnlit<1.5){gl_FragColor=vec4(0.44,0.90,0.79,1.0);return;} vec4 base=uColor; if(uColored>0.5)base=vColor; if(uUnlit>1.5){gl_FragColor=base;return;} if(uTextured>0.5){vec4 tex=texture2D(uTexture,vUv); if(tex.a>0.0)tex.rgb/=tex.a; base*=tex;} if(base.a<uCutoff)discard; vec3 n=normalize(vNormal); if(!gl_FrontFacing)n=-n; float light=0.30+0.70*max(dot(n,normalize(vec3(-0.4,0.7,1.0))),0.0); gl_FragColor=vec4(base.rgb*light,base.a); }"
             val vs=shader(GLES20.GL_VERTEX_SHADER,vertex); val fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment)
@@ -374,8 +372,10 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             catch(error: OutOfMemoryError) { failed("There is not enough available memory to render this model.") }
         }
         private fun failed(message: String) {
-            mesh=null; uploadedMesh=null
+            mesh=null; uploadedMesh=null;fallbackMesh=null
             resident.clear()
+            if(geometryBuffer!=0)GLES20.glDeleteBuffers(1,intArrayOf(geometryBuffer),0)
+            geometryBuffer=0
             deleteInstancedVbos()
             if(textureIds.isNotEmpty())GLES20.glDeleteTextures(textureIds.size,textureIds,0)
             textureIds=IntArray(0)
@@ -385,7 +385,9 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private fun drawFrame() {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             val mesh=mesh ?: return
-            if(!mesh.residentGeometry)resident.clear()
+            resident.retainOnly(mesh)
+            if(fallbackMesh!==mesh)fallbackMesh=null
+            if(uploadedInstancedMesh!==mesh && instancedVbos.isNotEmpty())deleteInstancedVbos()
             if(mesh.resources.isEmpty() && instancedVbos.isNotEmpty())deleteInstancedVbos()
             val extent=verticalExtent()
             Matrix.orthoM(projection,0,-extent*aspect,extent*aspect,-extent,extent,-20f,20f)
@@ -405,58 +407,78 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glDisableVertexAttribArray(uvLocation); GLES20.glVertexAttrib2f(uvLocation,0f,0f)
             GLES20.glUniform1f(texturedLocation,0f); GLES20.glUniform1f(cutoffLocation,0f)
             GLES20.glUniform4f(colorLocation,.36f,.82f,.71f,1f)
-            if(mesh.resources.isNotEmpty()) { drawInstanced(mesh); CrashDiagnostics.stage("Frame complete"); return }
+            if(mesh.resources.isNotEmpty()) {
+                drawInstanced(mesh)
+                if(mesh.segments>0) {
+                    GLES20.glUniformMatrix4fv(mvpLocation,1,false,mvp,0)
+                    GLES20.glUniformMatrix4fv(localLocation,1,false,identity,0)
+                    drawResident(mesh)
+                } else resident.clear()
+                CrashDiagnostics.stage("Frame complete"); return
+            }
             uploadTextures(mesh)
-            CrashDiagnostics.stage("Streaming geometry to GPU")
+            CrashDiagnostics.stage("Preparing retained geometry")
             val normalMat=FloatArray(9)
             if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
-            if(mesh.residentGeometry) {
-                drawResident(mesh)
-                CrashDiagnostics.stage("Frame complete")
-                return
-            }
-            if(mesh.triangles>0) {
-                GLES20.glUniform1f(unlitLocation,0f)
-                if(mesh.surfaces.isEmpty()) {
-                    if(mesh.vertexColors!=null) { GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA) }
-                    stream(mesh,null,mesh.triangles*3)
-                    GLES20.glDisable(GLES20.GL_BLEND)
-                }
-                else {
-                    stream(mesh,mesh.surfaces.filter { it.flags and 2==0 })
-                    GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA); GLES20.glDepthMask(false)
-                    stream(mesh,mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) })
-                    GLES20.glDepthMask(true); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_CULL_FACE)
-                }
-            }
-            if(mesh.pointCount>0) {
-                GLES20.glUniform1f(unlitLocation,2f)
-                GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
-                stream(mesh,null,mesh.pointCount)
-                GLES20.glDisable(GLES20.GL_BLEND)
-            }
-            if(mesh.segments>0) {
-                GLES20.glUniform1f(unlitLocation,1f)
-                stream(mesh,null,mesh.segments*2,true)
-            }
+            drawResident(mesh)
             CrashDiagnostics.stage("Frame complete")
         }
         private fun drawResident(mesh: StlParser.Mesh) {
-            val buffer=resident.ensure(mesh)
+            if(fallbackMesh===mesh) { drawStreamingFallback(mesh);return }
+            val buffer=try { resident.ensure(mesh) } catch(_: IllegalStateException) {
+                // Resource availability, never file extension, selects this fallback.
+                fallbackMesh=mesh;drawStreamingFallback(mesh);return
+            }
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,buffer)
             GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal)
             GLES20.glEnableVertexAttribArray(vertexColorLocation)
-            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,ResidentGeometry.STRIDE,0)
-            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,ResidentGeometry.STRIDE,12)
-            GLES20.glVertexAttribPointer(vertexColorLocation,4,GLES20.GL_UNSIGNED_BYTE,true,ResidentGeometry.STRIDE,24)
-            GLES20.glDisableVertexAttribArray(uvLocation)
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,resident.stride,0)
+            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,resident.stride,12)
+            GLES20.glVertexAttribPointer(vertexColorLocation,4,GLES20.GL_UNSIGNED_BYTE,true,resident.stride,24)
+            if(resident.stride==36) {
+                GLES20.glEnableVertexAttribArray(uvLocation)
+                GLES20.glVertexAttribPointer(uvLocation,2,GLES20.GL_FLOAT,false,resident.stride,28)
+            } else GLES20.glDisableVertexAttribArray(uvLocation)
+            val vertices=if(mesh.resources.isEmpty())mesh.data.capacity()/6 else 0
             GLES20.glUniform1f(unlitLocation,if(mesh.pointCount>0)2f else 0f)
-            if(resident.transparent) {
-                GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            if(vertices>0) {
+                if(mesh.surfaces.isEmpty()) {
+                    if(resident.transparent) { GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA) }
+                    GLES20.glDrawArrays(if(mesh.pointCount>0)GLES20.GL_POINTS else GLES20.GL_TRIANGLES,0,vertices)
+                } else {
+                    for(surface in mesh.surfaces.filter { it.flags and 2==0 }) { drawSurface(surface);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,surface.first,surface.count) }
+                    GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);GLES20.glDepthMask(false)
+                    for(surface in mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) }) { drawSurface(surface);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,surface.first,surface.count) }
+                }
             }
-            GLES20.glDrawArrays(if(mesh.pointCount>0)GLES20.GL_POINTS else GLES20.GL_TRIANGLES,0,mesh.data.capacity()/6)
-            GLES20.glDisable(GLES20.GL_BLEND)
+            GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_CULL_FACE)
+            if(mesh.segments>0) {
+                GLES20.glUniform1f(unlitLocation,1f)
+                GLES20.glDrawArrays(GLES20.GL_LINES,vertices,mesh.segments*2)
+            }
             check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not render model geometry." }
+        }
+        private fun drawStreamingFallback(mesh: StlParser.Mesh) {
+            CrashDiagnostics.stage("Streaming geometry: retained GPU allocation unavailable")
+            if(geometryBuffer==0) {
+                val ids=IntArray(1);GLES20.glGenBuffers(1,ids,0);geometryBuffer=ids[0]
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*48,null,GLES20.GL_STREAM_DRAW)
+                check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device has insufficient memory to render this model." }
+            }
+            if(mesh.resources.isEmpty()) {
+                GLES20.glUniform1f(unlitLocation,if(mesh.pointCount>0)2f else 0f)
+                if(mesh.surfaces.isEmpty()) {
+                    if(mesh.vertexColors!=null) { GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA) }
+                    stream(mesh,null,mesh.data.capacity()/6)
+                } else {
+                    stream(mesh,mesh.surfaces.filter { it.flags and 2==0 })
+                    GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);GLES20.glDepthMask(false)
+                    stream(mesh,mesh.surfaces.filter { it.flags and 2!=0 }.sortedBy { depth(it,mesh) })
+                }
+            }
+            GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_CULL_FACE)
+            if(mesh.segments>0) { GLES20.glUniform1f(unlitLocation,1f);stream(mesh,null,mesh.segments*2,true) }
         }
         private fun stream(mesh: StlParser.Mesh,surfaces: List<CadMeshParser.Surface>?,count: Int=0,lines: Boolean=false) {
             batch.clear()

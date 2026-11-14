@@ -17,10 +17,13 @@ internal class ResidentGeometry(private val gpu: Gpu) {
     }
     private var model: StlParser.Mesh?=null
     private var buffer=0
-    private val staging=ByteBuffer.allocateDirect(BATCH_VERTICES*STRIDE).order(ByteOrder.nativeOrder())
+    private val staging=ByteBuffer.allocateDirect(BATCH_VERTICES*36).order(ByteOrder.nativeOrder())
+    var stride=STRIDE
+        private set
     var transparent=false
         private set
 
+    fun retainOnly(mesh: StlParser.Mesh) { if(model!==mesh)clear() }
     fun clear() {
         if(buffer!=0)gpu.delete(buffer)
         forgetContext()
@@ -30,8 +33,10 @@ internal class ResidentGeometry(private val gpu: Gpu) {
     fun ensure(mesh: StlParser.Mesh): Int {
         if(model===mesh)return buffer
         clear()
-        val count=mesh.data.capacity()/6
-        val bytes=count.toLong()*STRIDE
+        val vertices=if(mesh.resources.isEmpty())mesh.data.capacity()/6 else 0
+        val count=vertices+mesh.lines.capacity()/3
+        stride=if(mesh.textureCoordinates!=null && vertices>0)36 else STRIDE
+        val bytes=count.toLong()*stride
         check(bytes<=Int.MAX_VALUE) { "Geometry exceeds the graphics buffer capacity." }
         try {
             buffer=gpu.allocate(bytes.toInt())
@@ -41,14 +46,16 @@ internal class ResidentGeometry(private val gpu: Gpu) {
                 staging.clear()
                 val end=minOf(count,first+BATCH_VERTICES)
                 for(v in first until end) {
-                    for(a in 0..5)staging.putFloat(mesh.data.get(v*6+a))
+                    val line=v>=vertices
+                    for(a in 0..5)staging.putFloat(if(line) { if(a<3)mesh.lines.get((v-vertices)*3+a) else 0f } else mesh.data.get(v*6+a))
                     for(c in 0..3) {
-                        val value=mesh.vertexColors?.get(v*4+c) ?: 1f
+                        val value=if(line)1f else mesh.vertexColors?.get(v*4+c) ?: 1f
                         if(c==3 && value<1f)transparent=true
                         staging.put((value.coerceIn(0f,1f)*255).roundToInt().toByte())
                     }
+                    if(stride==36)for(a in 0..1)staging.putFloat(if(line)0f else mesh.textureCoordinates!!.get(v*(mesh.textureStride/4)+mesh.textureOffset+a))
                 }
-                staging.flip();gpu.upload(buffer,first*STRIDE,staging)
+                staging.flip();gpu.upload(buffer,first*stride,staging)
                 first=end
             }
             model=mesh

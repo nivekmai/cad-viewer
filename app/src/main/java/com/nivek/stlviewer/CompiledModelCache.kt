@@ -6,7 +6,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Properties
 
-/** Single-entry disk cache for CAD engine output.
+/** One conversion cache per saved-model directory.
  *
  * Converting a large SketchUp file on the phone costs minutes (the reader
  * parses the whole file in a WebView worker), but the converted output is
@@ -15,8 +15,8 @@ import java.util.Properties
  * kept here; the next load of the same source reads it straight through
  * [ModelParser] instead of running the converter.
  *
- * The cache holds exactly one model, matching the app's single saved
- * source file (filesDir/model.stl). A new model replaces both. The entry
+ * RecentModels gives each source its own directory, so opening another
+ * model does not evict this conversion. The entry
  * is keyed on the source file's display name, size and SHA-256 content
  * fingerprint, plus a [VERSION] that is bumped whenever the converted format or
  * the cache semantics change, so a stale or foreign entry is never used.

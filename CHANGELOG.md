@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.0
+
+- Added Recent models: reopen app-owned model snapshots without finding the original file. Each model keeps its own cached conversion; Manage shows storage use and removes saved copies.
+- All importers now use retained GPU geometry by default, selected by geometry features rather than file type. Preserves textures, colors, lines, points, instances, and section clipping. Falls back to bounded streaming if a non-instanced retained allocation is unavailable.
+- Identical source imports share a library entry; changed content is saved separately. Missing or invalid conversions are rebuilt from the saved source.
+
 ## 1.8.1
 
 - Upload PLY geometry once and retain it on the GPU. Rotation, pan, zoom, and section changes no longer rebuild or transfer the mesh each frame.
