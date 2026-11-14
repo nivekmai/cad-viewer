@@ -50,10 +50,12 @@ jobs:
           node tools/test-skp-instanced.cjs
           node tools/test-cad-host.cjs
           node tools/bundle-skp.cjs
-          git diff --exit-code -- app/src/main/assets/cad/openskp.js
+          node tools/bundle-usdz.cjs
+          git diff --exit-code -- app/src/main/assets/cad/openskp.js app/src/main/assets/cad/usdz.js
           npx --prefix tools playwright install --with-deps chromium
           node tools/test-cad-browser.cjs
           node tools/test-texture-rendering.cjs
+          CAD_TEXTURE_FIXTURE=build/cad-test/USDZ_binary.cadmesh node tools/test-texture-rendering.cjs
           node tools/test-scad-browser.cjs
           ./gradlew --no-daemon :app:testDebugUnitTest -PcadIntegration=true
       - name: Save builds

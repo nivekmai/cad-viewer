@@ -107,6 +107,11 @@ function stlBounds(bytes) {
       ['SKP modern nested','skp','skp/nesting_2021.skp','cadmesh'],
       ['SKP scaled components','skp','skp/instance_scale_term_2021.skp','cadmesh'],
       ['SKP furniture','skp','skp/chair_and_table.skp','cadmesh'],
+      ['USDZ ASCII','usdz','usdz/textured-ascii.usdz','cadmesh'],
+      ['USDZ binary','usdz','usdz/textured-binary.usdz','cadmesh'],
+      ['USDZ default units','usdz','usdz/default-units.usdz','cadmesh'],
+      ['invalid USDZ','usdz',Buffer.from('not a USDZ'),'error'],
+      ['truncated USDZ','usdz',Buffer.from('PKbroken'),'error'],
       ['SKP textured','skp','skp/legacy_v2020_textured.skp','cadmesh'],
       ['empty SKP','skp','skp/blank_v17.skp','error'],
       ['invalid SKP','skp',Buffer.from('not a SketchUp file'),'error'],
@@ -142,6 +147,12 @@ function stlBounds(bytes) {
             for(const [i,d] of [1270,254,0].entries())assert.ok(Math.abs(results[name].dimensions[i]-d)<.01, 'Nested SKP placement/axis mismatch');
           }
           if(name==='SKP textured') {assert.equal(results[name].images,1);assert.equal(results[name].textured,1);}
+          if(name.startsWith('USDZ')) {
+            assert.equal(results[name].triangles,2);assert.equal(results[name].images,1);assert.equal(results[name].textured,1);
+            const scale=name==='USDZ default units'?10:1000;
+            for(const [i,d] of [2,1,0].entries())assert.ok(Math.abs(results[name].dimensions[i]-d*scale)<.01,JSON.stringify(results[name]));
+            for(const [i,d] of [3,4,5].entries())assert.ok(Math.abs(results[name].min[i]-d*scale)<.01,JSON.stringify(results[name]));
+          }
           if(name==='SKP furniture')assert.ok(results[name].triangles>100);
           if(name==='SKP scaled components') {
             assert.ok(results[name].triangles>=24);

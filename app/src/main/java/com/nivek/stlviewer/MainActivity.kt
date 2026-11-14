@@ -139,7 +139,7 @@ class MainActivity : Activity() {
         loading.addView(cancel,LinearLayout.LayoutParams(dp(140),dp(48)).apply { topMargin=dp(20) })
         viewport.addView(loading,FrameLayout.LayoutParams(-1,-1)); root.addView(viewport,LinearLayout.LayoutParams(-1,0,1f))
         footerLayout=column().apply { setPadding(dp(20),dp(12),dp(20),dp(16)) }
-        detail=text("PLY · STL · OBJ · 3MF · DXF · SCAD · STEP · DWG · SKP",12,MUTED).apply { gravity=Gravity.CENTER }; footerLayout.addView(detail)
+        detail=text("PLY · STL · OBJ · 3MF · DXF · SCAD · STEP · DWG · SKP · USDZ",12,MUTED).apply { gravity=Gravity.CENTER }; footerLayout.addView(detail)
         notice=text("",12,0xffffd28a.toInt()).apply { gravity=Gravity.CENTER; visibility=View.GONE }; footerLayout.addView(notice)
         gestureHelp=text("Drag to rotate · Two fingers to pan\nPinch to zoom · Double tap to reset",13,MUTED).apply { gravity=Gravity.CENTER; setPadding(0,dp(10),0,dp(16)) }; footerLayout.addView(gestureHelp)
         val actions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
@@ -257,7 +257,7 @@ class MainActivity : Activity() {
                     if(parents.isNotEmpty())labels.add("↑ Parent folder")
                     entries.forEach { labels.add(if(it.directory)"▸ ${it.title}" else it.title) }
                     val dialog=AlertDialog.Builder(this).setTitle("Choose a model").setNegativeButton("Cancel",null)
-                    if(labels.isEmpty())dialog.setMessage("No PLY, STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, or SKP files in this folder.")
+                    if(labels.isEmpty())dialog.setMessage("No PLY, STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, SKP, or USDZ files in this folder.")
                     else dialog.setItems(labels.toTypedArray()) { _,index ->
                         if(parents.isNotEmpty() && index==0)browseFolder(tree,parents.last(),parents.dropLast(1))
                         else {
@@ -402,7 +402,7 @@ class MainActivity : Activity() {
             }
         }
         CrashDiagnostics.stage("Converting $type")
-        val status=when(type) { "scad"->"Compiling SCAD on your phone…"; "skp"->"Reading SketchUp on your phone…"; "dwg"->"Reading DWG on your phone…"; else->"Preparing STEP surfaces…" }
+        val status=when(type) { "scad"->"Compiling SCAD on your phone…"; "usdz"->"Reading USDZ on your phone…"; "skp"->"Reading SketchUp on your phone…"; "dwg"->"Reading DWG on your phone…"; else->"Preparing STEP surfaces…" }
         runOnUiThread { if(job==generation)loadingText.text=status }
         val compiled=LocalCadEngine(this).convert(source,type)
         CrashDiagnostics.stage("Preparing $type render geometry")
@@ -463,7 +463,7 @@ class MainActivity : Activity() {
         private val INK=0xff10171f.toInt()
         private val MUTED=0xff97a8b9.toInt()
         private val MINT=0xff71e4c5.toInt()
-        private const val SUPPORTED_FORMATS="PLY, STL, OBJ, 3MF, ASCII DXF, SCAD, STEP/STP, DWG, and SketchUp (SKP).\n\nSketchUp shows triangulated surfaces with component placements. Material colors and embedded PNG/JPEG textures are displayed. Projected texture mapping and overlapping transparency may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some SketchUp versions or features may not import correctly.\n\nSTEP solids and surfaces are converted to a shaded preview. DWG shows supported drawing geometry; proprietary 3D solids, proxy objects, external references, and hatches are not rendered.\n\nDXF/DWG text, multiline notes, visible block attributes, and dimensions with saved drawing blocks are displayed. Text uses a substitute outline font; rich styling, background masks, and exact spacing may differ. Use Top view to read plans.\n\nSCAD scripts run offline and must be self-contained or use the bundled MCAD library.\n\nPLY supports ASCII and binary meshes and point clouds, including vertex RGB/alpha colors. Formats other than SketchUp and PLY use a single surface color. Viewing notes identify omitted content.\n\nIf a file is missing from the picker, try Show all files or Browse folder."
+        private const val SUPPORTED_FORMATS="PLY, STL, OBJ, 3MF, ASCII DXF, SCAD, STEP/STP, DWG, SketchUp (SKP), and USDZ.\n\nSketchUp shows triangulated surfaces with component placements. Material colors and embedded PNG/JPEG textures are displayed. Projected texture mapping and overlapping transparency may be approximate. Loose edges, text, dimensions, and scene styles are not displayed. Some SketchUp versions or features may not import correctly.\n\nSTEP solids and surfaces are converted to a shaded preview. DWG shows supported drawing geometry; proprietary 3D solids, proxy objects, external references, and hatches are not rendered.\n\nDXF/DWG text, multiline notes, visible block attributes, and dimensions with saved drawing blocks are displayed. Text uses a substitute outline font; rich styling, background masks, and exact spacing may differ. Use Top view to read plans.\n\nSCAD scripts run offline and must be self-contained or use the bundled MCAD library.\n\nPLY supports ASCII and binary meshes and point clouds, including vertex RGB/alpha colors. USDZ displays static meshes, transforms, material colors and embedded textures. Animation and advanced USD features may differ or be omitted.\n\nFormats other than USDZ, SketchUp and PLY use a single surface color. Viewing notes identify omitted content.\n\nIf a file is missing from the picker, try Show all files or Browse folder."
         private val SUPPORTED_MIMES=arrayOf(
             "model/stl","application/sla","application/vnd.ms-pki.stl","application/x-stl","application/stl","application/x-navistyle",
             "model/obj","application/x-wavefront-obj","application/x-tgif","text/x-obj",
@@ -472,6 +472,7 @@ class MainActivity : Activity() {
             "application/dxf","application/x-dxf","image/vnd.dxf","image/x-dxf","drawing/x-dxf",
             // Android providers also label .skp using historical Koan MIME types.
             "application/vnd.koan","application/x-koan",
+            "model/vnd.usdz+zip","model/usdz","application/usdz",
             "model/ply","application/ply","application/x-ply",
             "application/vnd.sketchup.skp","application/x-sketchup","application/x-skp",
             "model/step","application/step","application/x-step","application/x-stp","text/x-step",

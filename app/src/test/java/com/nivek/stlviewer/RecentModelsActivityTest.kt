@@ -19,6 +19,7 @@ import org.robolectric.shadows.ShadowAlertDialog
 class RecentModelsActivityTest {
     @Test fun opensSavedModelFromStartupListWithoutOriginalFile() = exercise("Kitchen.obj",false)
     @Test fun opensSavedConversionWithoutReadingSketchUpAgain() = exercise("Kitchen.skp",true)
+    @Test fun opensSavedUsdzConversion() = exercise("Kitchen.usdz",true)
     private fun exercise(name: String,converted: Boolean) {
         val root=RuntimeEnvironment.getApplication().filesDir
         val library=RecentModels(File(root,"models"))

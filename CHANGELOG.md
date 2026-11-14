@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+- Added offline USDZ import for packages containing ASCII USD or binary USDC, including mesh transforms, units, material colors, and embedded textures.
+- USDZ uses the shared retained renderer, section analysis, Recent models, and per-model conversion cache.
+- Added binary/textured package, default-unit, malformed-input, and native/rendering integration tests. Static previews may omit animation and advanced USD features; viewing notes describe limitations.
+
 ## 1.9.0
 
 - Added Recent models: reopen app-owned model snapshots without finding the original file. Each model keeps its own cached conversion; Manage shows storage use and removes saved copies.

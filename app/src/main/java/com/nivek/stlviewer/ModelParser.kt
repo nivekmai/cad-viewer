@@ -6,8 +6,8 @@ import java.util.Locale
 
 object ModelParser {
     @JvmStatic fun extension(name: String) = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-    @JvmStatic fun supported(name: String) = extension(name) in setOf("ply", "stl", "obj", "3mf", "dxf", "scad", "step", "stp", "dwg", "skp")
-    @JvmStatic fun needsEngine(name: String) = extension(name) in setOf("scad", "step", "stp", "dwg", "skp")
+    @JvmStatic fun supported(name: String) = extension(name) in setOf("ply", "stl", "obj", "3mf", "dxf", "scad", "step", "stp", "dwg", "skp", "usdz")
+    @JvmStatic fun needsEngine(name: String) = extension(name) in setOf("scad", "step", "stp", "dwg", "skp", "usdz")
     @JvmStatic @Throws(IOException::class)
     fun read(file: File, name: String): StlParser.Mesh {
         return when (extension(name)) {
@@ -17,7 +17,7 @@ object ModelParser {
             "3mf" -> ThreeMfParser.read(file)
             "dxf" -> DxfParser.read(file)
             "stl" -> StlParser.read(file)
-            else -> throw IOException("Choose a PLY, STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, or SketchUp (SKP) file.")
+            else -> throw IOException("Choose a PLY, STL, OBJ, 3MF, DXF, SCAD, STEP/STP, DWG, SketchUp (SKP), or USDZ file.")
         }
     }
 }

@@ -23,3 +23,7 @@ SketchUp fixtures in `skp/` come from OpenSKP commit `e7b467452be72b105ca4f7a965
 containers, nested components, placement/scale, and an empty model.
 `skp/chair_and_table.skp` comes from `examples/web-viewer/samples` in the same commit.
 `skp/legacy_v2020_textured.skp` comes from `packages/typescript/tests/fixtures` at the same upstream commit; it contains an embedded PNG and different front/back materials.
+
+## USDZ
+
+`usdz/` contains original synthetic test packages with a textured quad, a parent transform, explicit Z-up, and meter/default-centimeter units. Both USDA and USDC roots are covered. Regenerate using `uv run --python 3.12 --with usd-core==26.11 tools/fixtures/usdz/generate.py`. No user models are included.

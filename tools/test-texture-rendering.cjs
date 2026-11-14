@@ -4,7 +4,7 @@ const {chromium}=require('playwright');
 const root=path.join(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'app/src/main/java/com/nivek/stlviewer/ModelView.kt'),'utf8');
 const vertex=source.match(/val vertex="([^"]+)"/)[1],fragment=source.match(/val fragment="([^"]+)"/)[1];
-const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'));
+const bytes=fs.readFileSync(path.join(root,process.env.CAD_TEXTURE_FIXTURE || 'build/cad-test/SKP_textured.cadmesh'));
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  try{
@@ -21,7 +21,9 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   const base=magic==='CVM2'?24:16;
   const vertices=v.getInt32(4,true),batches=v.getInt32(8,true);
   const xyz=[],uv=[];
-  for(let i=0;i<vertices;i++){xyz.push(v.getFloat32(base+i*20,true)/254-1,v.getFloat32(base+4+i*20,true)/254-1,0);uv.push(v.getFloat32(base+12+i*20,true),v.getFloat32(base+16+i*20,true));}
+  const lo=[Infinity,Infinity],hi=[-Infinity,-Infinity];
+  for(let i=0;i<vertices;i++)for(let a=0;a<2;a++){const n=v.getFloat32(base+i*20+a*4,true);lo[a]=Math.min(lo[a],n);hi[a]=Math.max(hi[a],n);}
+  for(let i=0;i<vertices;i++){xyz.push((v.getFloat32(base+i*20,true)-lo[0])/(hi[0]-lo[0])*2-1,(v.getFloat32(base+4+i*20,true)-lo[1])/(hi[1]-lo[1])*2-1,0);uv.push(v.getFloat32(base+12+i*20,true),v.getFloat32(base+16+i*20,true));}
   // Reference streaming layout for pixel comparisons against retained buffers.
   // Tiny capacity deliberately forces multiple uploads for the fixture.
   const capacity=3,staging=new Float32Array(capacity*12),buffer=gl.createBuffer();
@@ -47,8 +49,8 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
     for(let i=0;i<n;i++){const v=offset+i;staging.set([xyz[v*3],xyz[v*3+1],xyz[v*3+2],0,0,1,uv[v*2],uv[v*2+1],0,1,0,1],i*12);}
     gl.bufferSubData(gl.ARRAY_BUFFER,0,staging.subarray(0,n*12));gl.drawArrays(gl.TRIANGLES,0,n);gl.finish();
   }if(gl.getError()!==gl.NO_ERROR)throw Error('GL render error');const px=new Uint8Array(256*256*4);gl.readPixels(0,0,256,256,gl.RGBA,gl.UNSIGNED_BYTE,px);return px;}
-  const textured=draw();let red=0,white=0;
-  for(let i=0;i<textured.length;i+=4){if(textured[i]>textured[i+1]*1.5&&textured[i]>textured[i+2]*1.5)red++;if(textured[i]>180&&Math.abs(textured[i]-textured[i+1])<5&&Math.abs(textured[i]-textured[i+2])<5)white++;}
+  const textured=draw();let red=0,white=0,green=0,blue=0;
+  for(let i=0;i<textured.length;i+=4){if(textured[i+1]>textured[i]*1.5&&textured[i+1]>textured[i+2]*1.5)green++;if(textured[i+2]>textured[i]*1.5&&textured[i+2]>textured[i+1]*1.5)blue++;if(textured[i]>textured[i+1]*1.5&&textured[i]>textured[i+2]*1.5)red++;if(textured[i]>180&&Math.abs(textured[i]-textured[i+1])<5&&Math.abs(textured[i]-textured[i+2])<5)white++;}
   uniform('uTextured',0);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,0,0,1);const solid=draw();
   const center=(128*256+128)*4;const solidColor=Array.from(solid.slice(center,center+4));
   uniform('uTextured',1);gl.uniform4f(gl.getUniformLocation(program,'uColor'),1,1,1,1);draw();
@@ -104,19 +106,22 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
   const retainedTexture=residentDraw();const textureMatches=retainedTexture.every((n,i)=>n===textured[i]);
   if(gl.getError()!==gl.NO_ERROR)throw Error('Retained geometry render error');
-  return {textureMatches,packedMatches,packedClipping,vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
+  return {green,blue,textureMatches,packedMatches,packedClipping,vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
  },{vertex,fragment,bytes:Array.from(bytes)});
  assert.ok(result.textureMatches,JSON.stringify(result));
  assert.ok(result.packedMatches,JSON.stringify(result));
  assert.ok(result.packedClipping[0]>100 && result.packedClipping[1]===0 && result.packedClipping[2]===0 && result.packedClipping[3]>100,JSON.stringify(result));
  assert.ok(result.vertexColor[0]===0 && result.vertexColor[1]>100 && result.vertexColor[2]===0,JSON.stringify(result));
  assert.ok(result.resetColor[0]>100 && result.resetColor[1]===0,JSON.stringify(result));
- assert.ok(result.red>100&&result.white>100,JSON.stringify(result));
+ // The 2x2 USD fixture has four different corners: bilinear filtering leaves
+ // only a small region close to pure white, unlike the larger SKP checker.
+ if(process.env.CAD_TEXTURE_FIXTURE?.includes('USDZ'))assert.ok(result.red>100&&result.green>100&&result.blue>100&&result.white>10,JSON.stringify(result));
+ else assert.ok(result.red>100&&result.white>100,JSON.stringify(result));
  assert.ok(result.solidColor[0]>100&&result.solidColor[1]===0&&result.solidColor[2]===0);
  assert.ok(Math.abs(result.alphaColor[0]-result.solidColor[0]*128/255)<3,JSON.stringify(result));
  assert.ok(result.clipPixels[0]>100 && result.clipPixels[1]===0 && result.clipPixels[2]===0 && result.clipPixels[3]>100,JSON.stringify(result));
  assert.ok(result.movedPixels[0]===0 && result.movedPixels[1]>100 && result.twiceRestores,JSON.stringify(result));
  fs.mkdirSync(path.join(root,'build/cad-test'),{recursive:true});await page.screenshot({path:path.join(root,'build/cad-test/textured-skp.png')});
- console.log('PASS SketchUp texture pixels and material-color shader',result);
+ console.log('PASS imported textures, material colors, retained buffers and clipping',result);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

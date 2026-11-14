@@ -15,6 +15,9 @@
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="model/stl" />
                 <data android:mimeType="model/ply" />
+                <data android:mimeType="model/vnd.usdz+zip" />
+                <data android:mimeType="model/usdz" />
+                <data android:mimeType="application/usdz" />
                 <data android:mimeType="application/ply" />
                 <data android:mimeType="application/x-ply" />
                 <data android:mimeType="model/obj" />
@@ -52,6 +55,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="model/stl" />
                 <data android:mimeType="model/ply" />
+                <data android:mimeType="model/vnd.usdz+zip" />
+                <data android:mimeType="model/usdz" />
+                <data android:mimeType="application/usdz" />
                 <data android:mimeType="application/ply" />
                 <data android:mimeType="application/x-ply" />
                 <data android:mimeType="model/obj" />

@@ -115,14 +115,20 @@ async function readSkp(input) {
       (warnings.length ? '\nReader notes: ' + warnings.join('\n') : '')};
 }
 
+async function readUsdz(input) {
+  importScripts('usdz.js','skp-mesh.js');
+  const result=await UsdImport.read(input);
+  return {chunks:skpSceneChunks(result.scene),format:'cadmesh',units:'millimeter',notice:result.notice};
+}
+
 let chunkAcknowledged;
 self.onmessage = async event => {
   if(event.data.ack){chunkAcknowledged?.();return;}
   try {
     const input = await readBytes('input.model');
     const type = event.data.type;
-    if (!['step', 'stp', 'dwg', 'skp'].includes(type)) throw new Error('Unsupported CAD format.');
-    const result = type === 'skp' ? await readSkp(input) : type === 'dwg' ? await readDwg(input) : await readStep(input);
+    if (!['step', 'stp', 'dwg', 'skp', 'usdz'].includes(type)) throw new Error('Unsupported CAD format.');
+    const result = type === 'usdz' ? await readUsdz(input) : type === 'skp' ? await readSkp(input) : type === 'dwg' ? await readDwg(input) : await readStep(input);
     if(result.chunks) {
       // Pipeline a few chunks: the bridge (base64 + JNI + file write) is
       // far slower than encoding, so waiting for an ack per chunk
