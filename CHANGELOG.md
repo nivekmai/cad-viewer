@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2
+
+- Fixed USDZ files failing to open on the phone with "Unsupported CAD format": the 1.10.0 USDZ import was wired into the JavaScript reader and the file router but the local engine guard still rejected the type before the reader started. The kitchen scan now opens.
+- Added a regression test that the engine accepts every type the router sends it.
+
 ## 1.10.1
 
 - Fixed USDZ vertex colors: per-vertex primvars:displayColor is now kept through the import and shown as a palette of up to 256 flat colors, one batch per color. LiDAR scans previously rendered as a single flat color.

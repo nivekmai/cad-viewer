@@ -14,11 +14,21 @@ import java.util.concurrent.TimeoutException
 
 /** Bundled CAD readers run in isolated local workers without network permission. */
 class LocalCadEngine(private val activity: Activity) {
+    companion object {
+        // Types the bundled CAD readers accept. Must cover every type
+        // ModelParser.needsEngine routes to convert(); a type missing here
+        // fails on the phone with "Unsupported CAD format" even though the
+        // JavaScript reader supports it (USDZ was missed in 1.10.0).
+        @JvmStatic fun supportsType(requestedType: String): Boolean {
+            val type=if(requestedType=="stp")"step" else requestedType
+            return type in setOf("scad","step","dwg","skp","usdz")
+        }
+    }
     data class Compiled(val file: File,val format: String,val units: String,val notice: String)
     @SuppressLint("SetJavaScriptEnabled") // Only intercepted, bundled assets can execute.
     fun convert(source: File,requestedType: String): Compiled {
         val type=if(requestedType=="stp")"step" else requestedType
-        if(type !in setOf("scad","step","dwg","skp"))throw IOException("Unsupported CAD format.")
+        if(!supportsType(requestedType))throw IOException("Unsupported CAD format.")
         val label=type.uppercase(Locale.ROOT); val folder=if(type=="scad")"scad" else "cad"
         val prefix="/$folder/"; val inputName=if(type=="scad")"input.scad" else "input.model"
         val result=CompletableFuture<Compiled>()
