@@ -26,7 +26,7 @@ import java.util.Properties
  * into place with a rename (same filesystem) rather than copied; the
  * mapping follows the inode. */
 object CompiledModelCache {
-    const val VERSION = 2
+    const val VERSION = 3
     private const val META_NAME = "model.compiled.meta"
     private const val CACHE_PREFIX = "model.compiled."
 

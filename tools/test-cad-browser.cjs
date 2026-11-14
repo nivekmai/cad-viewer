@@ -85,6 +85,19 @@ function stlBounds(bytes) {
   }
   return {triangles:count,min,max,dimensions:max.map((n,i)=>n-min[i])};
 }
+function cadMeshBatches(bytes) {
+  const magic=bytes.toString('ascii',0,4);
+  assert.equal(magic,'CVM1');
+  const vertices=bytes.readInt32LE(4),batches=bytes.readInt32LE(8);
+  let offset=16+vertices*20;
+  const out=[];
+  for(let i=0;i<batches;i++,offset+=36) {
+    out.push({first:bytes.readInt32LE(offset),count:bytes.readInt32LE(offset+4),
+      color:[bytes.readFloatLE(offset+8),bytes.readFloatLE(offset+12),bytes.readFloatLE(offset+16),bytes.readFloatLE(offset+20)],
+      texture:bytes.readInt32LE(offset+24)});
+  }
+  return out;
+}
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
@@ -110,6 +123,7 @@ function stlBounds(bytes) {
       ['USDZ ASCII','usdz','usdz/textured-ascii.usdz','cadmesh'],
       ['USDZ binary','usdz','usdz/textured-binary.usdz','cadmesh'],
       ['USDZ default units','usdz','usdz/default-units.usdz','cadmesh'],
+      ['USDZ vertex colors','usdz','usdz/vertex-colors.usdz','cadmesh'],
       ['invalid USDZ','usdz',Buffer.from('not a USDZ'),'error'],
       ['truncated USDZ','usdz',Buffer.from('PKbroken'),'error'],
       ['SKP textured','skp','skp/legacy_v2020_textured.skp','cadmesh'],
@@ -148,10 +162,21 @@ function stlBounds(bytes) {
           }
           if(name==='SKP textured') {assert.equal(results[name].images,1);assert.equal(results[name].textured,1);}
           if(name.startsWith('USDZ')) {
-            assert.equal(results[name].triangles,2);assert.equal(results[name].images,1);assert.equal(results[name].textured,1);
+            assert.equal(results[name].triangles,2);
             const scale=name==='USDZ default units'?10:1000;
             for(const [i,d] of [2,1,0].entries())assert.ok(Math.abs(results[name].dimensions[i]-d*scale)<.01,JSON.stringify(results[name]));
             for(const [i,d] of [3,4,5].entries())assert.ok(Math.abs(results[name].min[i]-d*scale)<.01,JSON.stringify(results[name]));
+            if(name==='USDZ vertex colors') {
+              assert.equal(results[name].images,0);assert.equal(results[name].textured,0);
+              assert.ok(output.notice.includes('palette'));
+              const batches=cadMeshBatches(bytes);
+              assert.equal(batches.length,2);
+              const colors=batches.map(b=>b.color.slice(0,3).map(v=>Math.round(v*1000)/1000));
+              assert.ok(colors.some(c=>c[0]===1&&c[1]===0&&c[2]===0),'red batch missing: '+JSON.stringify(colors));
+              assert.ok(colors.some(c=>c[0]===0&&c[1]===0&&c[2]===1),'blue batch missing: '+JSON.stringify(colors));
+            } else {
+              assert.equal(results[name].images,1);assert.equal(results[name].textured,1);
+            }
           }
           if(name==='SKP furniture')assert.ok(results[name].triangles>100);
           if(name==='SKP scaled components') {

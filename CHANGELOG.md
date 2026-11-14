@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1
+
+- Fixed USDZ vertex colors: per-vertex primvars:displayColor is now kept through the import and shown as a palette of up to 256 flat colors, one batch per color. LiDAR scans previously rendered as a single flat color.
+- Bumped the conversion cache version so earlier flat-color USDZ conversions are rebuilt on next open.
+
 ## 1.10.0
 
 - Added offline USDZ import for packages containing ASCII USD or binary USDC, including mesh transforms, units, material colors, and embedded textures.

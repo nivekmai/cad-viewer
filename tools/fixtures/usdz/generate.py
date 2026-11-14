@@ -32,3 +32,5 @@ assert UsdUtils.CreateNewUsdzPackage(Sdf.AssetPath(str(root/'scene.usdc')),str(r
 stage.ClearMetadata('metersPerUnit');stage.GetRootLayer().Save()
 assert UsdUtils.CreateNewUsdzPackage(Sdf.AssetPath(str(root/'scene.usda')),str(root/'default-units.usdz'))
 for name in ['checker.png','scene.usda','scene.usdc']:(root/name).unlink()
+
+# vertex-colors.usdz is hand-authored from vertex-colors.usda (zip, stored, single scene.usda entry); it has per-vertex primvars:displayColor with no material, to cover the palette path.
