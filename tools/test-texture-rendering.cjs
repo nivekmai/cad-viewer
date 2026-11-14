@@ -71,8 +71,29 @@ const bytes=fs.readFileSync(path.join(root,'build/cad-test/SKP_textured.cadmesh'
   uniform('uClipEnabled',0);uniform('uColored',1);
   const colored=draw();const vertexColor=Array.from(colored.slice(center,center+4));
   uniform('uColored',0);const resetColor=Array.from(draw().slice(center,center+4));
-  return {vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
+  // PLY's retained VBO uses native floats plus normalized RGBA bytes.
+  const packed=new ArrayBuffer(count*28),packedView=new DataView(packed);
+  for(let i=0;i<count;i++) {
+    const v=first+i;
+    [xyz[v*3],xyz[v*3+1],xyz[v*3+2],0,0,1].forEach((n,a)=>packedView.setFloat32(i*28+a*4,n,true));
+    [0,255,0,255].forEach((n,a)=>packedView.setUint8(i*28+24+a,n));
+  }
+  gl.bufferData(gl.ARRAY_BUFFER,new Uint8Array(packed),gl.STATIC_DRAW);
+  for(const [name,size,offset,type,normalized] of [['aPosition',3,0,gl.FLOAT,false],['aNormal',3,12,gl.FLOAT,false],['aColor',4,24,gl.UNSIGNED_BYTE,true]]) {
+    const loc=gl.getAttribLocation(program,name);gl.vertexAttribPointer(loc,size,type,normalized,28,offset);gl.enableVertexAttribArray(loc);
+  }
+  gl.disableVertexAttribArray(gl.getAttribLocation(program,'aUv'));uniform('uColored',1);
+  const residentDraw=()=>{gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLES,0,count);const p=new Uint8Array(256*256*4);gl.readPixels(0,0,256,256,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;};
+  const packedPixels=residentDraw();
+  const packedMatches=packedPixels.every((n,i)=>n===colored[i]);
+  uniform('uClipEnabled',1);uniform('uClipSign',1);const packedCut=residentDraw();
+  uniform('uClipSign',-1);const packedFlip=residentDraw();
+  const packedClipping=[packedCut[(128*256+64)*4+1],packedCut[(128*256+192)*4+1],packedFlip[(128*256+64)*4+1],packedFlip[(128*256+192)*4+1]];
+  if(gl.getError()!==gl.NO_ERROR)throw Error('Retained PLY render error');
+  return {packedMatches,packedClipping,vertexColor,resetColor,red,white,solidColor,alphaColor,clipPixels,movedPixels,twiceRestores};
  },{vertex,fragment,bytes:Array.from(bytes)});
+ assert.ok(result.packedMatches,JSON.stringify(result));
+ assert.ok(result.packedClipping[0]>100 && result.packedClipping[1]===0 && result.packedClipping[2]===0 && result.packedClipping[3]>100,JSON.stringify(result));
  assert.ok(result.vertexColor[0]===0 && result.vertexColor[1]>100 && result.vertexColor[2]===0,JSON.stringify(result));
  assert.ok(result.resetColor[0]>100 && result.resetColor[1]===0,JSON.stringify(result));
  assert.ok(result.red>100&&result.white>100,JSON.stringify(result));

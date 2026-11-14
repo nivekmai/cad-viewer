@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+
+- Upload PLY geometry once and retain it on the GPU. Rotation, pan, zoom, and section changes no longer rebuild or transfer the mesh each frame.
+- Pack GPU vertex colors into four bytes; disable blending for opaque PLY scans. Release buffers when changing models and rebuild them after graphics context loss.
+
 ## 1.8.0
 
 - Added ASCII and binary PLY meshes and point clouds, preserving vertex colors with disk-backed geometry buffers.

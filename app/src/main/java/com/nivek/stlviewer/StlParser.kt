@@ -18,6 +18,7 @@ object StlParser {
         @JvmField val segments = edgeCount / 6
         var vertexColors: FloatBuffer? = null
         var pointCount = 0
+        var residentGeometry = false
         var textureCoordinates: FloatBuffer? = null
         var surfaces: List<CadMeshParser.Surface> = emptyList()
         var textures: List<ByteBuffer> = emptyList()

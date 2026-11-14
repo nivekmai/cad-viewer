@@ -113,6 +113,26 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private var geometryBuffer=0
         private var instancedVbos=IntArray(0)
         private var uploadedInstancedMesh: StlParser.Mesh?=null
+        private val resident=ResidentGeometry(object: ResidentGeometry.Gpu {
+            override fun allocate(bytes: Int): Int {
+                val ids=IntArray(1); GLES20.glGenBuffers(1,ids,0)
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,ids[0])
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,bytes,null,GLES20.GL_STATIC_DRAW)
+                if(GLES20.glGetError()!=GLES20.GL_NO_ERROR) {
+                    GLES20.glDeleteBuffers(1,ids,0)
+                    error("The graphics device could not allocate model geometry.")
+                }
+                return ids[0]
+            }
+            override fun upload(id: Int,offset: Int,data: java.nio.ByteBuffer) {
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,id)
+                GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER,offset,data.remaining(),data)
+                // Only during initial upload: bound outstanding driver copies.
+                GLES20.glFinish()
+                check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not upload model geometry." }
+            }
+            override fun delete(id: Int) { GLES20.glDeleteBuffers(1,intArrayOf(id),0) }
+        })
         private val batch=GeometryBatch()
         private var uploadedMesh: StlParser.Mesh?=null
         private var textureIds=IntArray(0)
@@ -132,6 +152,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,java.nio.ByteBuffer.allocateDirect(4).apply { putInt(-1);position(0) })
             uploadedMesh=null; textureIds=IntArray(0) // GL names cannot survive context loss.
             uploadedInstancedMesh=null; instancedVbos=IntArray(0)
+            resident.forgetContext()
             val buffers=IntArray(1); GLES20.glGenBuffers(1,buffers,0); geometryBuffer=buffers[0]
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,geometryBuffer)
             GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,batch.capacity*48,null,GLES20.GL_STREAM_DRAW)
@@ -354,6 +375,7 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         }
         private fun failed(message: String) {
             mesh=null; uploadedMesh=null
+            resident.clear()
             deleteInstancedVbos()
             if(textureIds.isNotEmpty())GLES20.glDeleteTextures(textureIds.size,textureIds,0)
             textureIds=IntArray(0)
@@ -363,6 +385,8 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
         private fun drawFrame() {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             val mesh=mesh ?: return
+            if(!mesh.residentGeometry)resident.clear()
+            if(mesh.resources.isEmpty() && instancedVbos.isNotEmpty())deleteInstancedVbos()
             val extent=verticalExtent()
             Matrix.orthoM(projection,0,-extent*aspect,extent*aspect,-extent,extent,-20f,20f)
             Matrix.setIdentityM(model,0); Matrix.translateM(model,0,panX,panY,0f)
@@ -386,6 +410,11 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
             CrashDiagnostics.stage("Streaming geometry to GPU")
             val normalMat=FloatArray(9)
             if(normalMatrix(model,normalMat))GLES20.glUniformMatrix3fv(normalMatrixLocation,1,false,normalMat,0)
+            if(mesh.residentGeometry) {
+                drawResident(mesh)
+                CrashDiagnostics.stage("Frame complete")
+                return
+            }
             if(mesh.triangles>0) {
                 GLES20.glUniform1f(unlitLocation,0f)
                 if(mesh.surfaces.isEmpty()) {
@@ -411,6 +440,23 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
                 stream(mesh,null,mesh.segments*2,true)
             }
             CrashDiagnostics.stage("Frame complete")
+        }
+        private fun drawResident(mesh: StlParser.Mesh) {
+            val buffer=resident.ensure(mesh)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,buffer)
+            GLES20.glEnableVertexAttribArray(position); GLES20.glEnableVertexAttribArray(normal)
+            GLES20.glEnableVertexAttribArray(vertexColorLocation)
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,ResidentGeometry.STRIDE,0)
+            GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,ResidentGeometry.STRIDE,12)
+            GLES20.glVertexAttribPointer(vertexColorLocation,4,GLES20.GL_UNSIGNED_BYTE,true,ResidentGeometry.STRIDE,24)
+            GLES20.glDisableVertexAttribArray(uvLocation)
+            GLES20.glUniform1f(unlitLocation,if(mesh.pointCount>0)2f else 0f)
+            if(resident.transparent) {
+                GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            }
+            GLES20.glDrawArrays(if(mesh.pointCount>0)GLES20.GL_POINTS else GLES20.GL_TRIANGLES,0,mesh.data.capacity()/6)
+            GLES20.glDisable(GLES20.GL_BLEND)
+            check(GLES20.glGetError()==GLES20.GL_NO_ERROR) { "The graphics device could not render model geometry." }
         }
         private fun stream(mesh: StlParser.Mesh,surfaces: List<CadMeshParser.Surface>?,count: Int=0,lines: Boolean=false) {
             batch.clear()
