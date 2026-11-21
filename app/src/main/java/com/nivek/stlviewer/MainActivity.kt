@@ -29,17 +29,18 @@ class MainActivity : Activity() {
     private var pending: Future<*>?=null
     private lateinit var model: ModelView
     private lateinit var name: TextView
-    private lateinit var detail: TextView
+    private var modelDetails=""
+    private var modelNotice=""
+    private var hasModel=false
+    private var hasFaces=false
+    private var fullScreen=false
+    private lateinit var rootLayout: LinearLayout
+    private lateinit var exitFullScreen: Button
+    private var backCallback: android.window.OnBackInvokedCallback?=null
     private lateinit var loadingText: TextView
-    private lateinit var notice: TextView
-    private lateinit var gestureHelp: TextView
     private lateinit var headerLayout: LinearLayout
-    private lateinit var footerLayout: LinearLayout
-    private lateinit var browseButton: Button
     private lateinit var empty: LinearLayout
     private lateinit var loading: LinearLayout
-    private lateinit var reset: Button
-    private lateinit var sectionButton: Button
     private lateinit var pickHint: TextView
     private lateinit var sectionPanel: LinearLayout
     private lateinit var sectionSeek: SeekBar
@@ -54,12 +55,16 @@ class MainActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val root=column().apply { setBackgroundColor(INK) }
+        val root=column().apply { setBackgroundColor(INK) };rootLayout=root
         root.setOnApplyWindowInsetsListener { view,insets ->
             if(Build.VERSION.SDK_INT>=30) {
                 val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-                view.setPadding(bars.left,bars.top,bars.right,bars.bottom)
-            } else view.setPadding(insets.systemWindowInsetLeft,insets.systemWindowInsetTop,insets.systemWindowInsetRight,insets.systemWindowInsetBottom)
+                if(fullScreen)view.setPadding(0,0,0,0) else view.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+                if(::exitFullScreen.isInitialized) {
+                    val safe=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                    (exitFullScreen.layoutParams as FrameLayout.LayoutParams).apply { topMargin=dp(8)+safe.top; marginEnd=dp(8)+safe.right }.also { exitFullScreen.layoutParams=it }
+                }
+            } else if(fullScreen)view.setPadding(0,0,0,0) else view.setPadding(insets.systemWindowInsetLeft,insets.systemWindowInsetTop,insets.systemWindowInsetRight,insets.systemWindowInsetBottom)
             insets
         }
         headerLayout=column().apply { setPadding(dp(24),dp(20),dp(24),dp(14)) }
@@ -70,19 +75,31 @@ class MainActivity : Activity() {
         titleRow.addView(more,LinearLayout.LayoutParams(dp(48),dp(48)))
         more.setOnClickListener {
             val menu=PopupMenu(this,more)
-            menu.menu.add(0,1,0,"Show all files")
-            menu.menu.add(0,3,1,"Browse folder")
-            menu.menu.add(0,2,1,"Supported formats")
-            menu.menu.add(0,4,2,"Top view").isEnabled=reset.isEnabled
-            menu.menu.add(0,5,3,"Crash diagnostics")
-            menu.menu.add(0,6,0,"Recent models")
+            menu.menu.add(0,7,0,"Open model")
+            menu.menu.add(0,6,1,"Recent models")
+            menu.menu.add(0,3,2,"Browse folder")
+            menu.menu.add(0,1,3,"Show all files")
+            menu.menu.add(0,8,4,"Reset view").isEnabled=hasModel
+            menu.menu.add(0,4,5,"Top view").isEnabled=hasModel
+            menu.menu.add(0,9,6,"Section analysis").isEnabled=hasModel
+            menu.menu.add(0,10,7,"Full screen").isEnabled=hasModel
+            menu.menu.add(0,11,8,"Model details").isEnabled=hasModel
+            menu.menu.add(0,12,9,"Gesture help")
+            menu.menu.add(0,2,10,"Supported formats")
+            menu.menu.add(0,5,11,"Crash diagnostics")
             menu.setOnMenuItemClickListener { item ->
                 when(item.itemId) {
+                    7 -> openFile(false)
                     1 -> openFile(true)
                     3 -> openFolder()
                     4 -> model.topView()
                     5 -> showDiagnostics()
                     6 -> showRecentModels()
+                    8 -> model.reset()
+                    9 -> chooseSectionPlane()
+                    10 -> setFullScreen(true)
+                    11 -> AlertDialog.Builder(this).setTitle(loadedName ?: "Model details").setMessage(modelDetails+if(modelNotice.isEmpty())"" else "\n\nViewing notes\n$modelNotice").setPositiveButton("OK",null).show()
+                    12 -> AlertDialog.Builder(this).setTitle("Gesture help").setMessage("Drag to rotate. Use two fingers to pan or pinch to zoom. Double tap to reset the view.").setPositiveButton("OK",null).show()
                     else -> AlertDialog.Builder(this).setTitle("Supported formats").setMessage(SUPPORTED_FORMATS).setPositiveButton("OK",null).show()
                 }
                 true
@@ -101,14 +118,20 @@ class MainActivity : Activity() {
             setPadding(dp(16),dp(10),dp(16),dp(10))
         }
         viewport.addView(pickHint,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin=dp(12) })
-        sectionPanel=LinearLayout(this).apply {
+        sectionPanel=column().apply {
             gravity=Gravity.CENTER_VERTICAL; visibility=View.GONE
             background=GradientDrawable().apply { setColor(0xff1d2a35.toInt()); cornerRadius=dp(14).toFloat() }
             setPadding(dp(14),dp(8),dp(14),dp(8))
         }
-        sectionPanel.addView(text("Cut",14,Color.WHITE).apply { setTypeface(null,Typeface.BOLD) })
+        val sectionActions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        sectionActions.addView(text("Section",14,Color.WHITE).apply { setTypeface(null,Typeface.BOLD) },LinearLayout.LayoutParams(0,-2,1f))
+        sectionActions.addView(button("Plane",false).apply { setOnClickListener { chooseSectionPlane() } },LinearLayout.LayoutParams(-2,dp(48)))
+        sectionPanel.addView(sectionActions)
         sectionSeek=SeekBar(this).apply {
             max=1000
+            contentDescription="Section position"
+            thumb=GradientDrawable().apply { shape=GradientDrawable.OVAL;setColor(MINT);setSize(dp(28),dp(28)) }
+            setPadding(dp(20),0,dp(20),0)
             progressTintList=ColorStateList.valueOf(MINT)
             thumbTintList=ColorStateList.valueOf(MINT)
             setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
@@ -120,13 +143,13 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(seek: SeekBar?) {}
             })
         }
-        sectionPanel.addView(sectionSeek,LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(12); marginEnd=dp(12) })
-        sectionPanel.addView(button("Flip",false).apply {
+        sectionPanel.addView(sectionSeek,LinearLayout.LayoutParams(-1,dp(64)))
+        sectionActions.addView(button("Flip",false).apply {
             contentDescription="Flip visible side of section"
             setOnClickListener { if(sectionState==SectionState.ACTIVE)model.flipSection() }
-        },LinearLayout.LayoutParams(-2,dp(44)))
-        sectionPanel.addView(button("Done",false).apply { setOnClickListener { endSection() } },LinearLayout.LayoutParams(-2,dp(44)))
-        viewport.addView(sectionPanel,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM).apply { marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(12) })
+        },LinearLayout.LayoutParams(-2,dp(48)))
+        sectionActions.addView(button("Done",false).apply { setOnClickListener { endSection() } },LinearLayout.LayoutParams(-2,dp(48)))
+        viewport.addView(sectionPanel,FrameLayout.LayoutParams(-1,-2,Gravity.TOP).apply { marginStart=dp(12); marginEnd=dp(12); topMargin=dp(12) })
         empty=column().apply { gravity=Gravity.CENTER; setPadding(dp(28),0,dp(28),0) }
         empty.addView(ImageView(this).apply { setImageResource(R.drawable.ic_app) },LinearLayout.LayoutParams(dp(108),dp(108)))
         empty.addView(text("Your model, in 3D",24,Color.WHITE).apply { setTypeface(null,Typeface.BOLD); gravity=Gravity.CENTER })
@@ -138,22 +161,9 @@ class MainActivity : Activity() {
         val cancel=button("Cancel",false).apply { setOnClickListener { generation++; pending?.cancel(true); loading.visibility=View.GONE } }
         loading.addView(cancel,LinearLayout.LayoutParams(dp(140),dp(48)).apply { topMargin=dp(20) })
         viewport.addView(loading,FrameLayout.LayoutParams(-1,-1)); root.addView(viewport,LinearLayout.LayoutParams(-1,0,1f))
-        footerLayout=column().apply { setPadding(dp(20),dp(12),dp(20),dp(16)) }
-        detail=text("PLY · STL · OBJ · 3MF · DXF · SCAD · STEP · DWG · SKP · USDZ",12,MUTED).apply { gravity=Gravity.CENTER }; footerLayout.addView(detail)
-        notice=text("",12,0xffffd28a.toInt()).apply { gravity=Gravity.CENTER; visibility=View.GONE }; footerLayout.addView(notice)
-        gestureHelp=text("Drag to rotate · Two fingers to pan\nPinch to zoom · Double tap to reset",13,MUTED).apply { gravity=Gravity.CENTER; setPadding(0,dp(10),0,dp(16)) }; footerLayout.addView(gestureHelp)
-        val actions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        actions.addView(button("Open model",true).apply { setOnClickListener { openFile(false) } },LinearLayout.LayoutParams(0,dp(52),1f))
-        reset=button("Reset view",false).apply { isEnabled=false; setOnClickListener { model.reset() } }
-        actions.addView(reset,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) })
-        sectionButton=button("Section",false).apply { isEnabled=false; setOnClickListener { onSectionButton() } }
-        actions.addView(sectionButton,LinearLayout.LayoutParams(0,dp(52),1f).apply { marginStart=dp(12) }); footerLayout.addView(actions)
-        browseButton=button("Browse folder",false).apply { setOnClickListener { openFolder() } }
-        val libraryActions=LinearLayout(this)
-        libraryActions.addView(button("Recent models",false).apply { setOnClickListener { showRecentModels() } },LinearLayout.LayoutParams(0,dp(48),1f))
-        libraryActions.addView(browseButton,LinearLayout.LayoutParams(0,dp(48),1f))
-        footerLayout.addView(libraryActions,LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(8) })
-        root.addView(footerLayout); setContentView(root); root.requestApplyInsets(); adaptLayout(resources.configuration)
+        exitFullScreen=button("✕",false).apply { contentDescription="Exit full screen";visibility=View.GONE;setOnClickListener { setFullScreen(false) } }
+        viewport.addView(exitFullScreen,FrameLayout.LayoutParams(dp(48),dp(48),Gravity.TOP or Gravity.END).apply { topMargin=dp(8);marginEnd=dp(8) })
+        setContentView(root);root.requestApplyInsets();adaptLayout(resources.configuration)
         val savedName=state?.getString("name")
         val initial=intentUri(intent)
         val savedId=state?.getString("modelId")
@@ -166,21 +176,49 @@ class MainActivity : Activity() {
     private fun adaptLayout(configuration: Configuration) {
         val compact=configuration.screenHeightDp<500
         val visibility=if(compact)View.GONE else View.VISIBLE
-        name.visibility=visibility; gestureHelp.visibility=visibility; browseButton.visibility=visibility
+        name.visibility=visibility
         headerLayout.setPadding(dp(24),dp(if(compact)4 else 20),dp(24),dp(if(compact)4 else 14))
-        footerLayout.setPadding(dp(20),dp(if(compact)4 else 12),dp(20),dp(if(compact)4 else 16))
     }
-    // Cross-section analysis: Section arms face picking, the picked face
-    // places the cut plane, the slider moves it, and Done turns the clip
-    // off without touching the loaded model. Tapping a face while the
-    // panel is open re-places the plane.
-    private fun onSectionButton() {
-        if(sectionState==SectionState.IDLE) {
-            sectionState=SectionState.PICKING
-            model.setSectionPicking(true)
-            pickHint.visibility=View.VISIBLE
-            sectionButton.text="Cancel"
-        } else endSection()
+    private fun setFullScreen(enabled: Boolean) {
+        fullScreen=enabled
+        headerLayout.visibility=if(enabled)View.GONE else View.VISIBLE
+        sectionPanel.visibility=if(!enabled && sectionState==SectionState.ACTIVE)View.VISIBLE else View.GONE
+        pickHint.visibility=if(!enabled && sectionState==SectionState.PICKING)View.VISIBLE else View.GONE
+        model.setSectionPicking(!enabled && sectionState==SectionState.PICKING)
+        exitFullScreen.visibility=if(enabled)View.VISIBLE else View.GONE
+        if(Build.VERSION.SDK_INT>=30) {
+            window.insetsController?.apply {
+                systemBarsBehavior=android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if(enabled)hide(WindowInsets.Type.systemBars()) else show(WindowInsets.Type.systemBars())
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility=if(enabled)View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE else View.SYSTEM_UI_FLAG_VISIBLE
+        }
+        if(Build.VERSION.SDK_INT>=33) {
+            if(enabled && backCallback==null) {
+                val callback=android.window.OnBackInvokedCallback { setFullScreen(false) };backCallback=callback
+                onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,callback)
+            } else if(!enabled) { backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) };backCallback=null }
+        }
+        rootLayout.requestApplyInsets()
+    }
+    @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses the registered OnBackInvokedCallback; this handles API 26–32.
+    @Deprecated("Legacy Android back handling")
+    override fun onBackPressed() { if(fullScreen)setFullScreen(false) else super.onBackPressed() }
+    private fun chooseSectionPlane() {
+        val labels=mutableListOf("XY · horizontal", "XZ · front/back", "YZ · left/right")
+        if(hasFaces)labels.add("Pick a face")
+        if(sectionState!=SectionState.IDLE)labels.add("Remove section")
+        AlertDialog.Builder(this).setTitle("Section plane").setItems(labels.toTypedArray()) { _,index ->
+            if(index<3) {
+                sectionState=SectionState.PICKING;pickHint.visibility=View.GONE
+                model.setSectionPicking(false);model.setAxisSection(intArrayOf(2,1,0)[index])
+            } else if(labels[index]=="Pick a face") {
+                sectionState=SectionState.PICKING;sectionPanel.visibility=View.GONE;pickHint.visibility=View.VISIBLE
+                model.setSectionPicking(true)
+            } else endSection()
+        }.setNegativeButton("Cancel",null).show()
     }
     private fun onSectionPicked(pick: SectionClip.Pick?,min: Float,max: Float) {
         if(sectionState==SectionState.IDLE)return
@@ -191,8 +229,8 @@ class MainActivity : Activity() {
         sectionMin=min; sectionMax=max
         sectionState=SectionState.ACTIVE
         pickHint.visibility=View.GONE
-        sectionPanel.visibility=View.VISIBLE
-        sectionButton.text="Section"
+        sectionPanel.visibility=if(fullScreen)View.GONE else View.VISIBLE
+        model.setSectionPicking(false)
         val offset=pick.normal[0]*pick.point[0]+pick.normal[1]*pick.point[1]+pick.normal[2]*pick.point[2]
         sectionSeek.progress=if(sectionMax>sectionMin)((offset-sectionMin)/(sectionMax-sectionMin)*1000f).roundToInt().coerceIn(0,1000) else 500
     }
@@ -201,7 +239,6 @@ class MainActivity : Activity() {
         model.clearSection()
         pickHint.visibility=View.GONE
         sectionPanel.visibility=View.GONE
-        sectionButton.text="Section"
     }
     private fun openFile(showAll: Boolean) {
         val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
@@ -363,14 +400,12 @@ class MainActivity : Activity() {
                     try {
                         loadedId=saved.id;loadedName=finalName; name.text=finalName
                         val primitives=if(mesh.pointCount>0)String.format(Locale.getDefault(),"%,d points",mesh.pointCount) else if(mesh.segments>0)String.format(Locale.getDefault(),"%,d triangles · %,d lines",mesh.triangles,mesh.segments) else String.format(Locale.getDefault(),"%,d triangles",mesh.triangles)
-                        detail.text=String.format(Locale.getDefault(),"%s · %s × %s × %s %s",primitives,dimension(mesh.width),dimension(mesh.depth),dimension(mesh.height),mesh.units)
-                        notice.text=if(mesh.notice.isEmpty())"" else "Viewing notes · Details"
-                        notice.visibility=if(mesh.notice.isEmpty())View.GONE else View.VISIBLE
-                        notice.setOnClickListener { AlertDialog.Builder(this).setTitle("Viewing notes").setMessage(mesh.notice).setPositiveButton("OK",null).show() }
+                        modelDetails=String.format(Locale.getDefault(),"%s · %s × %s × %s %s",primitives,dimension(mesh.width),dimension(mesh.depth),dimension(mesh.height),mesh.units)
+                        modelNotice=mesh.notice
                         CrashDiagnostics.stage("Uploading model to renderer")
                         model.show(mesh); model.restore(camera)
-                        empty.visibility=View.GONE; loading.visibility=View.GONE; reset.isEnabled=true
-                        sectionButton.isEnabled=mesh.triangles>0 || mesh.resources.isNotEmpty(); endSection()
+                        empty.visibility=View.GONE; loading.visibility=View.GONE; hasModel=true
+                        hasFaces=mesh.triangles>0 || mesh.resources.isNotEmpty(); endSection()
                     } catch(_: IOException) { showError("Could not save a local copy of this model.") }
                 }
             } catch(_: OutOfMemoryError) {

@@ -18,13 +18,15 @@ Use **⋮ → Show all files** if a provider mislabels your model. The Android *
 
 ## Recent models
 
-Tap **Recent models** to reopen saved models directly. The list appears on a fresh launch when saved models exist. **Conversion saved** means a reusable CAD conversion is available; **Saved on device** means the local source can be opened without the original provider or file permissions. Conversion caches belong to individual entries, so switching between models does not evict them.
+Choose **⋮ → Recent models** to reopen saved models directly. The list appears on a fresh launch when saved models exist. **Conversion saved** means a reusable CAD conversion is available; **Saved on device** means the local source can be opened without the original provider or file permissions. Conversion caches belong to individual entries, so switching between models does not evict them.
 
 Use **Manage** to see storage usage and remove local snapshots and conversions. Original files are unaffected. Saved entries are snapshots: use **Open file** again to import external edits; changed content creates another entry. No fixed file-count or geometry limits are imposed; saved models use device storage until removed.
 
 ## Section analysis
 
-Tap **Section**, then tap a face to place a cut. Move the slider to position it. **Flip** switches which side remains visible while keeping the cut in place; tap it again to switch back. **Done** restores the whole model.
+Choose **⋮ → Section analysis**, then **XY**, **XZ**, or **YZ** for a centered plane, or **Pick a face** for an arbitrary plane. Move the enlarged slider to position the cut. **Plane** changes its orientation, **Flip** swaps the visible side, and **Done** removes the cut.
+
+The permanent bottom toolbar has been removed; file actions, view controls, model details/viewing notes, and gesture help are in **⋮**. **⋮ → Full screen** hides the header and section editor along with system bars, keeping the model and a small **Exit full screen** button. The section remains applied; exiting restores the editor and its position. Android Back also exits fullscreen.
 
 ## Supported content
 

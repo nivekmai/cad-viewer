@@ -41,6 +41,24 @@ class ModelView(context: Context, private val onRenderError: (String) -> Unit) :
     private var sectionPicking=false
     var onSectionPicked: ((SectionClip.Pick?, Float, Float) -> Unit)?=null
     fun setSectionPicking(enabled: Boolean) { sectionPicking=enabled }
+    /** Plane normal is in normalized model space, independent of the camera. */
+    fun setAxisSection(axis: Int) {
+        require(axis in 0..2)
+        queueEvent {
+            val result=synchronized(scene) {
+                val mesh=scene.mesh
+                if(mesh==null)null else {
+                    val n=FloatArray(3).apply { this[axis]=1f }
+                    scene.clipPlane=floatArrayOf(n[0],n[1],n[2],0f)
+                    scene.clipSign=1f;scene.clipEnabled=true
+                    val range=SectionClip.planeRange(SectionClip.modelHalfExtents(mesh),n)
+                    Triple(SectionClip.Pick(FloatArray(3),n,0f),range.first,range.second)
+                }
+            }
+            post { onSectionPicked?.invoke(result?.first,result?.second ?: 0f,result?.third ?: 0f) }
+        }
+        requestRender()
+    }
     fun setSectionOffset(offset: Float) {
         queueEvent { synchronized(scene) { if(scene.clipEnabled)scene.clipPlane[3]=-offset } }; requestRender()
     }

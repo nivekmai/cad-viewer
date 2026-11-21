@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.0
+
+- Removed the permanent bottom toolbar and information panel. Open/recent/browse, view controls, section analysis, model details, and gesture help are in the three-dot menu.
+- Added centered XY, XZ, and YZ section planes alongside face picking; enlarged the section slider to a full-width 64 dp touch target with a 28 dp thumb.
+- Added immersive fullscreen with a small accessible exit button and Back support. The current section cut and slider position are preserved when entering and leaving fullscreen.
+
 ## 1.10.2
 
 - Fixed USDZ files failing to open on the phone with "Unsupported CAD format": the 1.10.0 USDZ import was wired into the JavaScript reader and the file router but the local engine guard still rejected the type before the reader started. The kitchen scan now opens.
