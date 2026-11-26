@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.1
+
+- Move the section editor to the left in landscape, with a vertical slider that increases upward. Portrait retains the horizontal slider. Rotation preserves the cut, side, and slider position; fullscreen still hides the editor.
+
 ## 1.11.0
 
 - Removed the permanent bottom toolbar and information panel. Open/recent/browse, view controls, section analysis, model details, and gesture help are in the three-dot menu.

@@ -24,7 +24,7 @@ Use **Manage** to see storage usage and remove local snapshots and conversions. 
 
 ## Section analysis
 
-Choose **⋮ → Section analysis**, then **XY**, **XZ**, or **YZ** for a centered plane, or **Pick a face** for an arbitrary plane. Move the enlarged slider to position the cut. **Plane** changes its orientation, **Flip** swaps the visible side, and **Done** removes the cut.
+Choose **⋮ → Section analysis**, then **XY**, **XZ**, or **YZ** for a centered plane, or **Pick a face** for an arbitrary plane. Move the enlarged slider to position the cut. In landscape, the editor moves to the left and the slider runs vertically (up increases the position); portrait uses the horizontal slider. **Plane** changes its orientation, **Flip** swaps the visible side, and **Done** removes the cut.
 
 The permanent bottom toolbar has been removed; file actions, view controls, model details/viewing notes, and gesture help are in **⋮**. **⋮ → Full screen** hides the header and section editor along with system bars, keeping the model and a small **Exit full screen** button. The section remains applied; exiting restores the editor and its position. Android Back also exits fullscreen.
 

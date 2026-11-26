@@ -33,7 +33,7 @@ class ViewerUiTest {
             val labels=(0 until menu.size()).map { menu.getItem(it).title.toString() }
             for(label in listOf("Open model","Recent models","Browse folder","Reset view","Section analysis","Model details","Gesture help","Full screen"))assertTrue(labels.contains(label))
             val slider=field(activity,"sectionSeek") as SeekBar
-            assertTrue(slider.layoutParams.height>=64*activity.resources.displayMetrics.density)
+            assertTrue((slider.parent as View).layoutParams.height>=64*activity.resources.displayMetrics.density)
             call(activity,"chooseSectionPlane")
             val dialog=ShadowAlertDialog.getLatestAlertDialog()
             assertEquals(listOf("XY · horizontal","XZ · front/back","YZ · left/right"),(0 until dialog.listView.adapter.count).map { dialog.listView.adapter.getItem(it).toString() })
@@ -58,6 +58,30 @@ class ViewerUiTest {
                 assertArrayEquals(expected,sceneField("clipPlane").get(scene) as FloatArray,0f)
                 assertEquals(true,sceneField("clipEnabled").get(scene))
             }
+        } finally { controller.destroy() }
+    }
+    @Test fun landscapeMovesSectionLeftAndRotationPreservesProgressAndFullscreen() {
+        val controller=Robolectric.buildActivity(MainActivity::class.java).create();val activity=controller.get()
+        try {
+            val seek=field(activity,"sectionSeek") as SeekBar
+            seek.progress=613
+            val panel=field(activity,"sectionPanel") as LinearLayout
+            val landscape=android.content.res.Configuration(activity.resources.configuration).apply {
+                orientation=android.content.res.Configuration.ORIENTATION_LANDSCAPE;screenWidthDp=800;screenHeightDp=360
+            }
+            activity.onConfigurationChanged(landscape)
+            val slider=field(activity,"sectionSlider") as SectionSlider
+            assertTrue(slider.vertical);assertSame(slider,panel.getChildAt(0))
+            val params=panel.layoutParams as android.widget.FrameLayout.LayoutParams
+            assertEquals(android.view.Gravity.LEFT,params.gravity and android.view.Gravity.HORIZONTAL_GRAVITY_MASK)
+            assertEquals(613,seek.progress)
+            call(activity,"setFullScreen",true)
+            activity.onConfigurationChanged(android.content.res.Configuration(landscape).apply {
+                orientation=android.content.res.Configuration.ORIENTATION_PORTRAIT;screenWidthDp=360;screenHeightDp=800
+            })
+            assertFalse(slider.vertical);assertEquals(View.GONE,panel.visibility)
+            assertEquals(613,seek.progress)
+            call(activity,"setFullScreen",false)
         } finally { controller.destroy() }
     }
     @Test fun fullscreenPreservesSectionAndRestoresEditorOnExit() {

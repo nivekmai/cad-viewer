@@ -43,6 +43,8 @@ class MainActivity : Activity() {
     private lateinit var loading: LinearLayout
     private lateinit var pickHint: TextView
     private lateinit var sectionPanel: LinearLayout
+    private lateinit var sectionActions: LinearLayout
+    private lateinit var sectionSlider: SectionSlider
     private lateinit var sectionSeek: SeekBar
     private var sectionState=SectionState.IDLE
     private var sectionMin=0f
@@ -123,7 +125,7 @@ class MainActivity : Activity() {
             background=GradientDrawable().apply { setColor(0xff1d2a35.toInt()); cornerRadius=dp(14).toFloat() }
             setPadding(dp(14),dp(8),dp(14),dp(8))
         }
-        val sectionActions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        sectionActions=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         sectionActions.addView(text("Section",14,Color.WHITE).apply { setTypeface(null,Typeface.BOLD) },LinearLayout.LayoutParams(0,-2,1f))
         sectionActions.addView(button("Plane",false).apply { setOnClickListener { chooseSectionPlane() } },LinearLayout.LayoutParams(-2,dp(48)))
         sectionPanel.addView(sectionActions)
@@ -143,7 +145,8 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(seek: SeekBar?) {}
             })
         }
-        sectionPanel.addView(sectionSeek,LinearLayout.LayoutParams(-1,dp(64)))
+        sectionSlider=SectionSlider(this,sectionSeek)
+        sectionPanel.addView(sectionSlider,LinearLayout.LayoutParams(-1,dp(64)))
         sectionActions.addView(button("Flip",false).apply {
             contentDescription="Flip visible side of section"
             setOnClickListener { if(sectionState==SectionState.ACTIVE)model.flipSection() }
@@ -174,6 +177,24 @@ class MainActivity : Activity() {
     }
     override fun onConfigurationChanged(configuration: Configuration) { super.onConfigurationChanged(configuration); adaptLayout(configuration) }
     private fun adaptLayout(configuration: Configuration) {
+        val landscape=configuration.orientation==Configuration.ORIENTATION_LANDSCAPE
+        sectionSlider.vertical=landscape
+        sectionPanel.orientation=if(landscape)LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        sectionActions.orientation=if(landscape)LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        sectionPanel.setPadding(dp(if(landscape)8 else 14),dp(8),dp(if(landscape)8 else 14),dp(8))
+        sectionPanel.removeView(sectionSlider)
+        sectionPanel.addView(sectionSlider,if(landscape)0 else 1,
+            LinearLayout.LayoutParams(if(landscape)dp(64) else -1,if(landscape)-1 else dp(64)))
+        sectionActions.layoutParams=LinearLayout.LayoutParams(if(landscape)dp(80) else -1,-2)
+        for(i in 0 until sectionActions.childCount) {
+            sectionActions.getChildAt(i).layoutParams=if(i==0)
+                LinearLayout.LayoutParams(if(landscape)-1 else 0,-2,if(landscape)0f else 1f)
+            else LinearLayout.LayoutParams(if(landscape)-1 else -2,dp(48))
+        }
+        sectionPanel.layoutParams=FrameLayout.LayoutParams(if(landscape)dp(160) else -1,if(landscape)-1 else -2,
+            if(landscape)Gravity.LEFT or Gravity.TOP else Gravity.TOP).apply {
+            leftMargin=dp(12);rightMargin=dp(12);topMargin=dp(12);bottomMargin=dp(12)
+        }
         val compact=configuration.screenHeightDp<500
         val visibility=if(compact)View.GONE else View.VISIBLE
         name.visibility=visibility

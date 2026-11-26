@@ -7,8 +7,8 @@ android {
         applicationId 'com.nivek.stlviewer'
         minSdk 26
         targetSdk 36
-        versionCode 26
-        versionName '1.11.0'
+        versionCode 27
+        versionName '1.11.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
